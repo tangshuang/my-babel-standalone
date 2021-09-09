@@ -4,7 +4,7 @@ This standalone build uses [@babel/preset-env](https://github.com/babel/babel/tr
 
 * [@babel/standalone](https://github.com/babel/babel/tree/master/packages/babel-standalone) = 5-6 mb minified
 * [my-babel-standalone](https://github.com/joncasey/my-babel-standalone) = 1.5 mb minified
-* [my-babel-standalone](https://github.com/tangshuang/my-babel-standalone) = 761kb
+* [my-babel-standalone](https://github.com/tangshuang/my-babel-standalone) = 1mb
 
 Currently, it's being used in the latest builds of [modern-hta](https://github.com/joncasey/modern-hta).
 

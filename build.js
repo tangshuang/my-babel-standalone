@@ -52,25 +52,30 @@ const webpackConfig = {
     )
   ],
   externals: [
-    {
-      '@babel/helpers': true,
-      process: true,
-      debug: true,
-      ms: true,
-      globals: true,
-      'source-map': true,
-      // buffer: true,
-      'color-convert': true,
-      chalk: true,
-      // '@babel/helper-module-imports': true,
-      // '@babel/helper-module-transforms': true,
-      // '@babel/helper-replace-supers': true,
-      // '@babel/helper-member-expression-to-functions': true,
-      // '@babel/helper-simple-access': true,
-      'path-browserify': true,
-      // '@babel/core/lib/parser/util/missing-plugin-helper.js': true,
-    },
-    // /^\@babel\/helper\-/,
+    // {
+    //   '@babel/helpers': 'var __BABEL_HELPERS__',
+    //   process: 'var __BABEL_PROCESS__',
+    //   debug: 'var __BABEL_DEBUG__',
+    //   ms: 'var __BABEL_MS__',
+    //   globals: 'var __BABEL_GLOBALS__',
+    //   'source-map': 'var __BABEL_SOURCE_MAP__',
+    //   buffer: 'var __BABEL_BUFFER__',
+    //   'color-convert': 'var __BABEL_COLOR_CONVERT__',
+    //   chalk: 'var __BABEL_CHALK__',
+    //   '@babel/helper-module-imports': 'var __BABEL_HELPERS__',
+    //   '@babel/helper-module-transforms': 'var __BABEL_HELPERS__',
+    //   '@babel/helper-replace-supers': 'var __BABEL_HELPERS__',
+    //   '@babel/helper-member-expression-to-functions': 'var __BABEL_HELPERS__',
+    //   '@babel/helper-simple-access': 'var __BABEL_HELPERS__',
+    //   'path-browserify': 'var __BABEL_PATH_BROWSERIFY__',
+    //   '@babel/core/lib/parser/util/missing-plugin-helper.js': 'var __BABEL_HELPERS__',
+    // },
+    // function(ctx, request, callback) {
+    //   if (/^\@babel\/helper\-/.test(request)) {
+    //     return callback(null, 'var __BABEL_HELPERS__')
+    //   }
+    //   callback()
+    // },
   ],
 }
 
@@ -99,19 +104,20 @@ const build = async (src, dst) => {
 const cleanTaggedTemplateExpression = (file) => {
   const filePath = path.resolve(__dirname, 'dist', file)
   const content = fs.readFileSync(filePath).toString()
-  const code = content.replace(/\`([\w\W]+?)\`/gmi, (matched, innerCode) => {
-    if (innerCode.indexOf('\n') > -1) {
-      return '`\n' + innerCode.trim()
-        .replace(/\n+/g, '\n')
-        .replace(/ +/g, ' ')
-        .replace(/\n /g, '\n')
-        .replace(/\/\*.*?\*\//g, '')
-        .replace(/\/\/.*?\n/g, '')
-        .replace(/\n/g, '')
-        + '\n`'
-    }
-    return matched
-  })
+  const code = content
+    .replace(/\)\`([\w\W]+?)\`,/gmi, (matched, innerCode) => {
+      if (innerCode.indexOf('\n') > -1) {
+        return ')`\n' + innerCode.trim()
+          .replace(/\n+/g, '\n')
+          .replace(/ +/g, ' ')
+          .replace(/\n /g, '\n')
+          .replace(/\/\*.*?\*\//g, '')
+          .replace(/\/\/.*?\n/g, '')
+          .replace(/\n/g, '')
+          + '\n`,'
+      }
+      return matched
+    })
   fs.writeFileSync(filePath, code)
 }
 

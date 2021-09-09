@@ -115,7 +115,7 @@ __webpack_require__.r(__webpack_exports__);
 
 /* harmony reexport (safe) */ __webpack_require__.d(__webpack_exports__, "buildExternalHelpers", function() { return _babel_core__WEBPACK_IMPORTED_MODULE_0__["buildExternalHelpers"]; });
 
-/* harmony import */ var _babel_generator__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! @babel/generator */ 100);
+/* harmony import */ var _babel_generator__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! @babel/generator */ 103);
 /* harmony import */ var _babel_generator__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(_babel_generator__WEBPACK_IMPORTED_MODULE_1__);
 /* harmony reexport (default from non-harmony) */ __webpack_require__.d(__webpack_exports__, "generate", function() { return _babel_generator__WEBPACK_IMPORTED_MODULE_1___default.a; });
 
@@ -140,7 +140,6 @@ function loadBuiltin (builtinTable, name) {
 }
 
 function processOptions (options) {
-
   const presets = (options.presets || []).map(presetName => {
     const preset = loadBuiltin(availablePresets, presetName)
     if (preset) {
@@ -398,11 +397,11 @@ exports.types = exports.OptionManager = exports.DEFAULT_EXTENSIONS = exports.ver
 
 var _file = __webpack_require__(/*! ./transformation/file/file */ 2);
 
-var _buildExternalHelpers = __webpack_require__(/*! ./tools/build-external-helpers */ 179);
+var _buildExternalHelpers = __webpack_require__(/*! ./tools/build-external-helpers */ 203);
 
-var _files = __webpack_require__(/*! ./config/files */ 180);
+var _files = __webpack_require__(/*! ./config/files */ 204);
 
-var _environment = __webpack_require__(/*! ./config/helpers/environment */ 181);
+var _environment = __webpack_require__(/*! ./config/helpers/environment */ 205);
 
 function _types() {
   const data = __webpack_require__(/*! @babel/types */ 8);
@@ -422,7 +421,7 @@ Object.defineProperty(exports, "types", {
 });
 
 function _parser() {
-  const data = __webpack_require__(/*! @babel/parser */ 135);
+  const data = __webpack_require__(/*! @babel/parser */ 157);
 
   _parser = function () {
     return data;
@@ -442,7 +441,7 @@ function _traverse() {
 }
 
 function _template() {
-  const data = __webpack_require__(/*! @babel/template */ 141);
+  const data = __webpack_require__(/*! @babel/template */ 163);
 
   _template = function () {
     return data;
@@ -451,15 +450,15 @@ function _template() {
   return data;
 }
 
-var _config = __webpack_require__(/*! ./config */ 182);
+var _config = __webpack_require__(/*! ./config */ 206);
 
-var _transform = __webpack_require__(/*! ./transform */ 229);
+var _transform = __webpack_require__(/*! ./transform */ 253);
 
-var _transformFile = __webpack_require__(/*! ./transform-file */ 244);
+var _transformFile = __webpack_require__(/*! ./transform-file */ 268);
 
-var _transformAst = __webpack_require__(/*! ./transform-ast */ 245);
+var _transformAst = __webpack_require__(/*! ./transform-ast */ 269);
 
-var _parse = __webpack_require__(/*! ./parse */ 246);
+var _parse = __webpack_require__(/*! ./parse */ 270);
 
 const version = "7.15.5";
 exports.version = version;
@@ -516,7 +515,7 @@ function _traverse() {
 }
 
 function _codeFrame() {
-  const data = __webpack_require__(/*! @babel/code-frame */ 131);
+  const data = __webpack_require__(/*! @babel/code-frame */ 144);
 
   _codeFrame = function () {
     return data;
@@ -536,7 +535,7 @@ function _t() {
 }
 
 function _helperModuleTransforms() {
-  const data = __webpack_require__(/*! @babel/helper-module-transforms */ 159);
+  const data = __webpack_require__(/*! @babel/helper-module-transforms */ 183);
 
   _helperModuleTransforms = function () {
     return data;
@@ -546,7 +545,7 @@ function _helperModuleTransforms() {
 }
 
 function _semver() {
-  const data = __webpack_require__(/*! semver */ 178);
+  const data = __webpack_require__(/*! semver */ 202);
 
   _semver = function () {
     return data;
@@ -745,13 +744,312 @@ exports.default = File;
 
 /***/ }),
 /* 3 */
-/*!*********************************!*\
-  !*** external "@babel/helpers" ***!
-  \*********************************/
+/*!**************************************************!*\
+  !*** ./node_modules/@babel/helpers/lib/index.js ***!
+  \**************************************************/
 /*! no static exports found */
-/***/ (function(module, exports) {
+/***/ (function(module, exports, __webpack_require__) {
 
-module.exports = require("@babel/helpers");
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.get = get;
+exports.minVersion = minVersion;
+exports.getDependencies = getDependencies;
+exports.ensure = ensure;
+exports.default = exports.list = void 0;
+
+var _traverse = __webpack_require__(/*! @babel/traverse */ 4);
+
+var _t = __webpack_require__(/*! @babel/types */ 8);
+
+var _helpers = __webpack_require__(/*! ./helpers */ 181);
+
+const {
+  assignmentExpression,
+  cloneNode,
+  expressionStatement,
+  file: t_file,
+  identifier,
+  variableDeclaration,
+  variableDeclarator
+} = _t;
+
+function makePath(path) {
+  const parts = [];
+
+  for (; path.parentPath; path = path.parentPath) {
+    parts.push(path.key);
+    if (path.inList) parts.push(path.listKey);
+  }
+
+  return parts.reverse().join(".");
+}
+
+let fileClass = undefined;
+
+function getHelperMetadata(file) {
+  const globals = new Set();
+  const localBindingNames = new Set();
+  const dependencies = new Map();
+  let exportName;
+  let exportPath;
+  const exportBindingAssignments = [];
+  const importPaths = [];
+  const importBindingsReferences = [];
+  const dependencyVisitor = {
+    ImportDeclaration(child) {
+      const name = child.node.source.value;
+
+      if (!_helpers.default[name]) {
+        throw child.buildCodeFrameError(`Unknown helper ${name}`);
+      }
+
+      if (child.get("specifiers").length !== 1 || !child.get("specifiers.0").isImportDefaultSpecifier()) {
+        throw child.buildCodeFrameError("Helpers can only import a default value");
+      }
+
+      const bindingIdentifier = child.node.specifiers[0].local;
+      dependencies.set(bindingIdentifier, name);
+      importPaths.push(makePath(child));
+    },
+
+    ExportDefaultDeclaration(child) {
+      const decl = child.get("declaration");
+
+      if (decl.isFunctionDeclaration()) {
+        if (!decl.node.id) {
+          throw decl.buildCodeFrameError("Helpers should give names to their exported func declaration");
+        }
+
+        exportName = decl.node.id.name;
+      }
+
+      exportPath = makePath(child);
+    },
+
+    ExportAllDeclaration(child) {
+      throw child.buildCodeFrameError("Helpers can only export default");
+    },
+
+    ExportNamedDeclaration(child) {
+      throw child.buildCodeFrameError("Helpers can only export default");
+    },
+
+    Statement(child) {
+      if (child.isModuleDeclaration()) return;
+      child.skip();
+    }
+
+  };
+  const referenceVisitor = {
+    Program(path) {
+      const bindings = path.scope.getAllBindings();
+      Object.keys(bindings).forEach(name => {
+        if (name === exportName) return;
+        if (dependencies.has(bindings[name].identifier)) return;
+        localBindingNames.add(name);
+      });
+    },
+
+    ReferencedIdentifier(child) {
+      const name = child.node.name;
+      const binding = child.scope.getBinding(name);
+
+      if (!binding) {
+        globals.add(name);
+      } else if (dependencies.has(binding.identifier)) {
+        importBindingsReferences.push(makePath(child));
+      }
+    },
+
+    AssignmentExpression(child) {
+      const left = child.get("left");
+      if (!(exportName in left.getBindingIdentifiers())) return;
+
+      if (!left.isIdentifier()) {
+        throw left.buildCodeFrameError("Only simple assignments to exports are allowed in helpers");
+      }
+
+      const binding = child.scope.getBinding(exportName);
+
+      if (binding != null && binding.scope.path.isProgram()) {
+        exportBindingAssignments.push(makePath(child));
+      }
+    }
+
+  };
+  (0, _traverse.default)(file.ast, dependencyVisitor, file.scope);
+  (0, _traverse.default)(file.ast, referenceVisitor, file.scope);
+  if (!exportPath) throw new Error("Helpers must default-export something.");
+  exportBindingAssignments.reverse();
+  return {
+    globals: Array.from(globals),
+    localBindingNames: Array.from(localBindingNames),
+    dependencies,
+    exportBindingAssignments,
+    exportPath,
+    exportName,
+    importBindingsReferences,
+    importPaths
+  };
+}
+
+function permuteHelperAST(file, metadata, id, localBindings, getDependency) {
+  if (localBindings && !id) {
+    throw new Error("Unexpected local bindings for module-based helpers.");
+  }
+
+  if (!id) return;
+  const {
+    localBindingNames,
+    dependencies,
+    exportBindingAssignments,
+    exportPath,
+    exportName,
+    importBindingsReferences,
+    importPaths
+  } = metadata;
+  const dependenciesRefs = {};
+  dependencies.forEach((name, id) => {
+    dependenciesRefs[id.name] = typeof getDependency === "function" && getDependency(name) || id;
+  });
+  const toRename = {};
+  const bindings = new Set(localBindings || []);
+  localBindingNames.forEach(name => {
+    let newName = name;
+
+    while (bindings.has(newName)) newName = "_" + newName;
+
+    if (newName !== name) toRename[name] = newName;
+  });
+
+  if (id.type === "Identifier" && exportName !== id.name) {
+    toRename[exportName] = id.name;
+  }
+
+  const visitor = {
+    Program(path) {
+      const exp = path.get(exportPath);
+      const imps = importPaths.map(p => path.get(p));
+      const impsBindingRefs = importBindingsReferences.map(p => path.get(p));
+      const decl = exp.get("declaration");
+
+      if (id.type === "Identifier") {
+        if (decl.isFunctionDeclaration()) {
+          exp.replaceWith(decl);
+        } else {
+          exp.replaceWith(variableDeclaration("var", [variableDeclarator(id, decl.node)]));
+        }
+      } else if (id.type === "MemberExpression") {
+        if (decl.isFunctionDeclaration()) {
+          exportBindingAssignments.forEach(assignPath => {
+            const assign = path.get(assignPath);
+            assign.replaceWith(assignmentExpression("=", id, assign.node));
+          });
+          exp.replaceWith(decl);
+          path.pushContainer("body", expressionStatement(assignmentExpression("=", id, identifier(exportName))));
+        } else {
+          exp.replaceWith(expressionStatement(assignmentExpression("=", id, decl.node)));
+        }
+      } else {
+        throw new Error("Unexpected helper format.");
+      }
+
+      Object.keys(toRename).forEach(name => {
+        path.scope.rename(name, toRename[name]);
+      });
+
+      for (const path of imps) path.remove();
+
+      for (const path of impsBindingRefs) {
+        const node = cloneNode(dependenciesRefs[path.node.name]);
+        path.replaceWith(node);
+      }
+
+      path.stop();
+    }
+
+  };
+  (0, _traverse.default)(file.ast, visitor, file.scope);
+}
+
+const helperData = Object.create(null);
+
+function loadHelper(name) {
+  if (!helperData[name]) {
+    const helper = _helpers.default[name];
+
+    if (!helper) {
+      throw Object.assign(new ReferenceError(`Unknown helper ${name}`), {
+        code: "BABEL_HELPER_UNKNOWN",
+        helper: name
+      });
+    }
+
+    const fn = () => {
+      const file = {
+        ast: t_file(helper.ast())
+      };
+
+      if (fileClass) {
+        return new fileClass({
+          filename: `babel-helper://${name}`
+        }, file);
+      }
+
+      return file;
+    };
+
+    const metadata = getHelperMetadata(fn());
+    helperData[name] = {
+      build(getDependency, id, localBindings) {
+        const file = fn();
+        permuteHelperAST(file, metadata, id, localBindings, getDependency);
+        return {
+          nodes: file.ast.program.body,
+          globals: metadata.globals
+        };
+      },
+
+      minVersion() {
+        return helper.minVersion;
+      },
+
+      dependencies: metadata.dependencies
+    };
+  }
+
+  return helperData[name];
+}
+
+function get(name, getDependency, id, localBindings) {
+  return loadHelper(name).build(getDependency, id, localBindings);
+}
+
+function minVersion(name) {
+  return loadHelper(name).minVersion();
+}
+
+function getDependencies(name) {
+  return Array.from(loadHelper(name).dependencies.values());
+}
+
+function ensure(name, newFileClass) {
+  if (!fileClass) {
+    fileClass = newFileClass;
+  }
+
+  loadHelper(name);
+}
+
+const list = Object.keys(_helpers.default).map(name => name.replace(/^_/, "")).filter(name => name !== "__esModule");
+exports.list = list;
+var _default = get;
+exports.default = _default;
 
 /***/ }),
 /* 4 */
@@ -789,19 +1087,19 @@ exports.visitors = exports.default = void 0;
 
 var _context = __webpack_require__(/*! ./context */ 5);
 
-var visitors = __webpack_require__(/*! ./visitors */ 157);
+var visitors = __webpack_require__(/*! ./visitors */ 179);
 
 exports.visitors = visitors;
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var cache = __webpack_require__(/*! ./cache */ 99);
+var cache = __webpack_require__(/*! ./cache */ 102);
 
 var _path = __webpack_require__(/*! ./path */ 6);
 
-var _scope = __webpack_require__(/*! ./scope */ 94);
+var _scope = __webpack_require__(/*! ./scope */ 96);
 
-var _hub = __webpack_require__(/*! ./hub */ 158);
+var _hub = __webpack_require__(/*! ./hub */ 180);
 
 const {
   VISITOR_KEYS,
@@ -1050,37 +1348,37 @@ var _debug = __webpack_require__(/*! debug */ 93);
 
 var _index = __webpack_require__(/*! ../index */ 4);
 
-var _scope = __webpack_require__(/*! ../scope */ 94);
+var _scope = __webpack_require__(/*! ../scope */ 96);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
 var t = _t;
 
-var _cache = __webpack_require__(/*! ../cache */ 99);
+var _cache = __webpack_require__(/*! ../cache */ 102);
 
-var _generator = __webpack_require__(/*! @babel/generator */ 100);
+var _generator = __webpack_require__(/*! @babel/generator */ 103);
 
-var NodePath_ancestry = __webpack_require__(/*! ./ancestry */ 126);
+var NodePath_ancestry = __webpack_require__(/*! ./ancestry */ 139);
 
-var NodePath_inference = __webpack_require__(/*! ./inference */ 127);
+var NodePath_inference = __webpack_require__(/*! ./inference */ 140);
 
-var NodePath_replacement = __webpack_require__(/*! ./replacement */ 130);
+var NodePath_replacement = __webpack_require__(/*! ./replacement */ 143);
 
-var NodePath_evaluation = __webpack_require__(/*! ./evaluation */ 137);
+var NodePath_evaluation = __webpack_require__(/*! ./evaluation */ 159);
 
-var NodePath_conversion = __webpack_require__(/*! ./conversion */ 138);
+var NodePath_conversion = __webpack_require__(/*! ./conversion */ 160);
 
-var NodePath_introspection = __webpack_require__(/*! ./introspection */ 149);
+var NodePath_introspection = __webpack_require__(/*! ./introspection */ 171);
 
-var NodePath_context = __webpack_require__(/*! ./context */ 150);
+var NodePath_context = __webpack_require__(/*! ./context */ 172);
 
-var NodePath_removal = __webpack_require__(/*! ./removal */ 151);
+var NodePath_removal = __webpack_require__(/*! ./removal */ 173);
 
-var NodePath_modification = __webpack_require__(/*! ./modification */ 153);
+var NodePath_modification = __webpack_require__(/*! ./modification */ 175);
 
-var NodePath_family = __webpack_require__(/*! ./family */ 155);
+var NodePath_family = __webpack_require__(/*! ./family */ 177);
 
-var NodePath_comments = __webpack_require__(/*! ./comments */ 156);
+var NodePath_comments = __webpack_require__(/*! ./comments */ 178);
 
 const {
   validate
@@ -17817,16 +18115,742 @@ function isVar(node) {
 
 /***/ }),
 /* 93 */
-/*!************************!*\
-  !*** external "debug" ***!
-  \************************/
+/*!*******************************************!*\
+  !*** ./node_modules/debug/src/browser.js ***!
+  \*******************************************/
 /*! no static exports found */
-/***/ (function(module, exports) {
+/***/ (function(module, exports, __webpack_require__) {
 
-module.exports = require("debug");
+/* WEBPACK VAR INJECTION */(function(process) {/* eslint-env browser */
+
+/**
+ * This is the web browser implementation of `debug()`.
+ */
+
+exports.formatArgs = formatArgs;
+exports.save = save;
+exports.load = load;
+exports.useColors = useColors;
+exports.storage = localstorage();
+exports.destroy = (() => {
+	let warned = false;
+
+	return () => {
+		if (!warned) {
+			warned = true;
+			console.warn('Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.');
+		}
+	};
+})();
+
+/**
+ * Colors.
+ */
+
+exports.colors = [
+	'#0000CC',
+	'#0000FF',
+	'#0033CC',
+	'#0033FF',
+	'#0066CC',
+	'#0066FF',
+	'#0099CC',
+	'#0099FF',
+	'#00CC00',
+	'#00CC33',
+	'#00CC66',
+	'#00CC99',
+	'#00CCCC',
+	'#00CCFF',
+	'#3300CC',
+	'#3300FF',
+	'#3333CC',
+	'#3333FF',
+	'#3366CC',
+	'#3366FF',
+	'#3399CC',
+	'#3399FF',
+	'#33CC00',
+	'#33CC33',
+	'#33CC66',
+	'#33CC99',
+	'#33CCCC',
+	'#33CCFF',
+	'#6600CC',
+	'#6600FF',
+	'#6633CC',
+	'#6633FF',
+	'#66CC00',
+	'#66CC33',
+	'#9900CC',
+	'#9900FF',
+	'#9933CC',
+	'#9933FF',
+	'#99CC00',
+	'#99CC33',
+	'#CC0000',
+	'#CC0033',
+	'#CC0066',
+	'#CC0099',
+	'#CC00CC',
+	'#CC00FF',
+	'#CC3300',
+	'#CC3333',
+	'#CC3366',
+	'#CC3399',
+	'#CC33CC',
+	'#CC33FF',
+	'#CC6600',
+	'#CC6633',
+	'#CC9900',
+	'#CC9933',
+	'#CCCC00',
+	'#CCCC33',
+	'#FF0000',
+	'#FF0033',
+	'#FF0066',
+	'#FF0099',
+	'#FF00CC',
+	'#FF00FF',
+	'#FF3300',
+	'#FF3333',
+	'#FF3366',
+	'#FF3399',
+	'#FF33CC',
+	'#FF33FF',
+	'#FF6600',
+	'#FF6633',
+	'#FF9900',
+	'#FF9933',
+	'#FFCC00',
+	'#FFCC33'
+];
+
+/**
+ * Currently only WebKit-based Web Inspectors, Firefox >= v31,
+ * and the Firebug extension (any Firefox version) are known
+ * to support "%c" CSS customizations.
+ *
+ * TODO: add a `localStorage` variable to explicitly enable/disable colors
+ */
+
+// eslint-disable-next-line complexity
+function useColors() {
+	// NB: In an Electron preload script, document will be defined but not fully
+	// initialized. Since we know we're in Chrome, we'll just detect this case
+	// explicitly
+	if (typeof window !== 'undefined' && window.process && (window.process.type === 'renderer' || window.process.__nwjs)) {
+		return true;
+	}
+
+	// Internet Explorer and Edge do not support colors.
+	if (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.toLowerCase().match(/(edge|trident)\/(\d+)/)) {
+		return false;
+	}
+
+	// Is webkit? http://stackoverflow.com/a/16459606/376773
+	// document is undefined in react-native: https://github.com/facebook/react-native/pull/1632
+	return (typeof document !== 'undefined' && document.documentElement && document.documentElement.style && document.documentElement.style.WebkitAppearance) ||
+		// Is firebug? http://stackoverflow.com/a/398120/376773
+		(typeof window !== 'undefined' && window.console && (window.console.firebug || (window.console.exception && window.console.table))) ||
+		// Is firefox >= v31?
+		// https://developer.mozilla.org/en-US/docs/Tools/Web_Console#Styling_messages
+		(typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.toLowerCase().match(/firefox\/(\d+)/) && parseInt(RegExp.$1, 10) >= 31) ||
+		// Double check webkit in userAgent just in case we are in a worker
+		(typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.toLowerCase().match(/applewebkit\/(\d+)/));
+}
+
+/**
+ * Colorize log arguments if enabled.
+ *
+ * @api public
+ */
+
+function formatArgs(args) {
+	args[0] = (this.useColors ? '%c' : '') +
+		this.namespace +
+		(this.useColors ? ' %c' : ' ') +
+		args[0] +
+		(this.useColors ? '%c ' : ' ') +
+		'+' + module.exports.humanize(this.diff);
+
+	if (!this.useColors) {
+		return;
+	}
+
+	const c = 'color: ' + this.color;
+	args.splice(1, 0, c, 'color: inherit');
+
+	// The final "%c" is somewhat tricky, because there could be other
+	// arguments passed either before or after the %c, so we need to
+	// figure out the correct index to insert the CSS into
+	let index = 0;
+	let lastC = 0;
+	args[0].replace(/%[a-zA-Z%]/g, match => {
+		if (match === '%%') {
+			return;
+		}
+		index++;
+		if (match === '%c') {
+			// We only are interested in the *last* %c
+			// (the user may have provided their own)
+			lastC = index;
+		}
+	});
+
+	args.splice(lastC, 0, c);
+}
+
+/**
+ * Invokes `console.debug()` when available.
+ * No-op when `console.debug` is not a "function".
+ * If `console.debug` is not available, falls back
+ * to `console.log`.
+ *
+ * @api public
+ */
+exports.log = console.debug || console.log || (() => {});
+
+/**
+ * Save `namespaces`.
+ *
+ * @param {String} namespaces
+ * @api private
+ */
+function save(namespaces) {
+	try {
+		if (namespaces) {
+			exports.storage.setItem('debug', namespaces);
+		} else {
+			exports.storage.removeItem('debug');
+		}
+	} catch (error) {
+		// Swallow
+		// XXX (@Qix-) should we be logging these?
+	}
+}
+
+/**
+ * Load `namespaces`.
+ *
+ * @return {String} returns the previously persisted debug modes
+ * @api private
+ */
+function load() {
+	let r;
+	try {
+		r = exports.storage.getItem('debug');
+	} catch (error) {
+		// Swallow
+		// XXX (@Qix-) should we be logging these?
+	}
+
+	// If debug isn't set in LS, and we're in Electron, try to load $DEBUG
+	if (!r && typeof process !== 'undefined' && 'env' in process) {
+		r = process.env.DEBUG;
+	}
+
+	return r;
+}
+
+/**
+ * Localstorage attempts to return the localstorage.
+ *
+ * This is necessary because safari throws
+ * when a user disables cookies/localstorage
+ * and you attempt to access it.
+ *
+ * @return {LocalStorage}
+ * @api private
+ */
+
+function localstorage() {
+	try {
+		// TVMLKit (Apple TV JS Runtime) does not have a window object, just localStorage in the global context
+		// The Browser also has localStorage in the global context.
+		return localStorage;
+	} catch (error) {
+		// Swallow
+		// XXX (@Qix-) should we be logging these?
+	}
+}
+
+module.exports = __webpack_require__(/*! ./common */ 94)(exports);
+
+const {formatters} = module.exports;
+
+/**
+ * Map %j to `JSON.stringify()`, since no Web Inspectors do that by default.
+ */
+
+formatters.j = function (v) {
+	try {
+		return JSON.stringify(v);
+	} catch (error) {
+		return '[UnexpectedJSONParseError]: ' + error.message;
+	}
+};
+
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../../process/browser.js */ 22)))
 
 /***/ }),
 /* 94 */
+/*!******************************************!*\
+  !*** ./node_modules/debug/src/common.js ***!
+  \******************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+
+/**
+ * This is the common logic for both the Node.js and web browser
+ * implementations of `debug()`.
+ */
+
+function setup(env) {
+	createDebug.debug = createDebug;
+	createDebug.default = createDebug;
+	createDebug.coerce = coerce;
+	createDebug.disable = disable;
+	createDebug.enable = enable;
+	createDebug.enabled = enabled;
+	createDebug.humanize = __webpack_require__(/*! ms */ 95);
+	createDebug.destroy = destroy;
+
+	Object.keys(env).forEach(key => {
+		createDebug[key] = env[key];
+	});
+
+	/**
+	* The currently active debug mode names, and names to skip.
+	*/
+
+	createDebug.names = [];
+	createDebug.skips = [];
+
+	/**
+	* Map of special "%n" handling functions, for the debug "format" argument.
+	*
+	* Valid key names are a single, lower or upper-case letter, i.e. "n" and "N".
+	*/
+	createDebug.formatters = {};
+
+	/**
+	* Selects a color for a debug namespace
+	* @param {String} namespace The namespace string for the for the debug instance to be colored
+	* @return {Number|String} An ANSI color code for the given namespace
+	* @api private
+	*/
+	function selectColor(namespace) {
+		let hash = 0;
+
+		for (let i = 0; i < namespace.length; i++) {
+			hash = ((hash << 5) - hash) + namespace.charCodeAt(i);
+			hash |= 0; // Convert to 32bit integer
+		}
+
+		return createDebug.colors[Math.abs(hash) % createDebug.colors.length];
+	}
+	createDebug.selectColor = selectColor;
+
+	/**
+	* Create a debugger with the given `namespace`.
+	*
+	* @param {String} namespace
+	* @return {Function}
+	* @api public
+	*/
+	function createDebug(namespace) {
+		let prevTime;
+		let enableOverride = null;
+		let namespacesCache;
+		let enabledCache;
+
+		function debug(...args) {
+			// Disabled?
+			if (!debug.enabled) {
+				return;
+			}
+
+			const self = debug;
+
+			// Set `diff` timestamp
+			const curr = Number(new Date());
+			const ms = curr - (prevTime || curr);
+			self.diff = ms;
+			self.prev = prevTime;
+			self.curr = curr;
+			prevTime = curr;
+
+			args[0] = createDebug.coerce(args[0]);
+
+			if (typeof args[0] !== 'string') {
+				// Anything else let's inspect with %O
+				args.unshift('%O');
+			}
+
+			// Apply any `formatters` transformations
+			let index = 0;
+			args[0] = args[0].replace(/%([a-zA-Z%])/g, (match, format) => {
+				// If we encounter an escaped % then don't increase the array index
+				if (match === '%%') {
+					return '%';
+				}
+				index++;
+				const formatter = createDebug.formatters[format];
+				if (typeof formatter === 'function') {
+					const val = args[index];
+					match = formatter.call(self, val);
+
+					// Now we need to remove `args[index]` since it's inlined in the `format`
+					args.splice(index, 1);
+					index--;
+				}
+				return match;
+			});
+
+			// Apply env-specific formatting (colors, etc.)
+			createDebug.formatArgs.call(self, args);
+
+			const logFn = self.log || createDebug.log;
+			logFn.apply(self, args);
+		}
+
+		debug.namespace = namespace;
+		debug.useColors = createDebug.useColors();
+		debug.color = createDebug.selectColor(namespace);
+		debug.extend = extend;
+		debug.destroy = createDebug.destroy; // XXX Temporary. Will be removed in the next major release.
+
+		Object.defineProperty(debug, 'enabled', {
+			enumerable: true,
+			configurable: false,
+			get: () => {
+				if (enableOverride !== null) {
+					return enableOverride;
+				}
+				if (namespacesCache !== createDebug.namespaces) {
+					namespacesCache = createDebug.namespaces;
+					enabledCache = createDebug.enabled(namespace);
+				}
+
+				return enabledCache;
+			},
+			set: v => {
+				enableOverride = v;
+			}
+		});
+
+		// Env-specific initialization logic for debug instances
+		if (typeof createDebug.init === 'function') {
+			createDebug.init(debug);
+		}
+
+		return debug;
+	}
+
+	function extend(namespace, delimiter) {
+		const newDebug = createDebug(this.namespace + (typeof delimiter === 'undefined' ? ':' : delimiter) + namespace);
+		newDebug.log = this.log;
+		return newDebug;
+	}
+
+	/**
+	* Enables a debug mode by namespaces. This can include modes
+	* separated by a colon and wildcards.
+	*
+	* @param {String} namespaces
+	* @api public
+	*/
+	function enable(namespaces) {
+		createDebug.save(namespaces);
+		createDebug.namespaces = namespaces;
+
+		createDebug.names = [];
+		createDebug.skips = [];
+
+		let i;
+		const split = (typeof namespaces === 'string' ? namespaces : '').split(/[\s,]+/);
+		const len = split.length;
+
+		for (i = 0; i < len; i++) {
+			if (!split[i]) {
+				// ignore empty strings
+				continue;
+			}
+
+			namespaces = split[i].replace(/\*/g, '.*?');
+
+			if (namespaces[0] === '-') {
+				createDebug.skips.push(new RegExp('^' + namespaces.substr(1) + '$'));
+			} else {
+				createDebug.names.push(new RegExp('^' + namespaces + '$'));
+			}
+		}
+	}
+
+	/**
+	* Disable debug output.
+	*
+	* @return {String} namespaces
+	* @api public
+	*/
+	function disable() {
+		const namespaces = [
+			...createDebug.names.map(toNamespace),
+			...createDebug.skips.map(toNamespace).map(namespace => '-' + namespace)
+		].join(',');
+		createDebug.enable('');
+		return namespaces;
+	}
+
+	/**
+	* Returns true if the given mode name is enabled, false otherwise.
+	*
+	* @param {String} name
+	* @return {Boolean}
+	* @api public
+	*/
+	function enabled(name) {
+		if (name[name.length - 1] === '*') {
+			return true;
+		}
+
+		let i;
+		let len;
+
+		for (i = 0, len = createDebug.skips.length; i < len; i++) {
+			if (createDebug.skips[i].test(name)) {
+				return false;
+			}
+		}
+
+		for (i = 0, len = createDebug.names.length; i < len; i++) {
+			if (createDebug.names[i].test(name)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	* Convert regexp to namespace
+	*
+	* @param {RegExp} regxep
+	* @return {String} namespace
+	* @api private
+	*/
+	function toNamespace(regexp) {
+		return regexp.toString()
+			.substring(2, regexp.toString().length - 2)
+			.replace(/\.\*\?$/, '*');
+	}
+
+	/**
+	* Coerce `val`.
+	*
+	* @param {Mixed} val
+	* @return {Mixed}
+	* @api private
+	*/
+	function coerce(val) {
+		if (val instanceof Error) {
+			return val.stack || val.message;
+		}
+		return val;
+	}
+
+	/**
+	* XXX DO NOT USE. This is a temporary stub function.
+	* XXX It WILL be removed in the next major release.
+	*/
+	function destroy() {
+		console.warn('Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.');
+	}
+
+	createDebug.enable(createDebug.load());
+
+	return createDebug;
+}
+
+module.exports = setup;
+
+
+/***/ }),
+/* 95 */
+/*!**********************************!*\
+  !*** ./node_modules/ms/index.js ***!
+  \**********************************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+/**
+ * Helpers.
+ */
+
+var s = 1000;
+var m = s * 60;
+var h = m * 60;
+var d = h * 24;
+var w = d * 7;
+var y = d * 365.25;
+
+/**
+ * Parse or format the given `val`.
+ *
+ * Options:
+ *
+ *  - `long` verbose formatting [false]
+ *
+ * @param {String|Number} val
+ * @param {Object} [options]
+ * @throws {Error} throw an error if val is not a non-empty string or a number
+ * @return {String|Number}
+ * @api public
+ */
+
+module.exports = function(val, options) {
+  options = options || {};
+  var type = typeof val;
+  if (type === 'string' && val.length > 0) {
+    return parse(val);
+  } else if (type === 'number' && isFinite(val)) {
+    return options.long ? fmtLong(val) : fmtShort(val);
+  }
+  throw new Error(
+    'val is not a non-empty string or a valid number. val=' +
+      JSON.stringify(val)
+  );
+};
+
+/**
+ * Parse the given `str` and return milliseconds.
+ *
+ * @param {String} str
+ * @return {Number}
+ * @api private
+ */
+
+function parse(str) {
+  str = String(str);
+  if (str.length > 100) {
+    return;
+  }
+  var match = /^(-?(?:\d+)?\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w|years?|yrs?|y)?$/i.exec(
+    str
+  );
+  if (!match) {
+    return;
+  }
+  var n = parseFloat(match[1]);
+  var type = (match[2] || 'ms').toLowerCase();
+  switch (type) {
+    case 'years':
+    case 'year':
+    case 'yrs':
+    case 'yr':
+    case 'y':
+      return n * y;
+    case 'weeks':
+    case 'week':
+    case 'w':
+      return n * w;
+    case 'days':
+    case 'day':
+    case 'd':
+      return n * d;
+    case 'hours':
+    case 'hour':
+    case 'hrs':
+    case 'hr':
+    case 'h':
+      return n * h;
+    case 'minutes':
+    case 'minute':
+    case 'mins':
+    case 'min':
+    case 'm':
+      return n * m;
+    case 'seconds':
+    case 'second':
+    case 'secs':
+    case 'sec':
+    case 's':
+      return n * s;
+    case 'milliseconds':
+    case 'millisecond':
+    case 'msecs':
+    case 'msec':
+    case 'ms':
+      return n;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Short format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function fmtShort(ms) {
+  var msAbs = Math.abs(ms);
+  if (msAbs >= d) {
+    return Math.round(ms / d) + 'd';
+  }
+  if (msAbs >= h) {
+    return Math.round(ms / h) + 'h';
+  }
+  if (msAbs >= m) {
+    return Math.round(ms / m) + 'm';
+  }
+  if (msAbs >= s) {
+    return Math.round(ms / s) + 's';
+  }
+  return ms + 'ms';
+}
+
+/**
+ * Long format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function fmtLong(ms) {
+  var msAbs = Math.abs(ms);
+  if (msAbs >= d) {
+    return plural(ms, msAbs, d, 'day');
+  }
+  if (msAbs >= h) {
+    return plural(ms, msAbs, h, 'hour');
+  }
+  if (msAbs >= m) {
+    return plural(ms, msAbs, m, 'minute');
+  }
+  if (msAbs >= s) {
+    return plural(ms, msAbs, s, 'second');
+  }
+  return ms + ' ms';
+}
+
+/**
+ * Pluralization helper.
+ */
+
+function plural(ms, msAbs, n, name) {
+  var isPlural = msAbs >= n * 1.5;
+  return Math.round(ms / n) + ' ' + name + (isPlural ? 's' : '');
+}
+
+
+/***/ }),
+/* 96 */
 /*!*********************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/scope/index.js ***!
   \*********************************************************/
@@ -17841,17 +18865,17 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = void 0;
 
-var _renamer = __webpack_require__(/*! ./lib/renamer */ 95);
+var _renamer = __webpack_require__(/*! ./lib/renamer */ 97);
 
 var _index = __webpack_require__(/*! ../index */ 4);
 
-var _binding = __webpack_require__(/*! ./binding */ 96);
+var _binding = __webpack_require__(/*! ./binding */ 98);
 
-var _globals = __webpack_require__(/*! globals */ 98);
+var _globals = __webpack_require__(/*! globals */ 100);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var _cache = __webpack_require__(/*! ../cache */ 99);
+var _cache = __webpack_require__(/*! ../cache */ 102);
 
 const {
   NOT_LOCAL_BINDING,
@@ -18851,7 +19875,7 @@ Scope.globals = Object.keys(_globals.builtin);
 Scope.contextVariables = ["arguments", "undefined", "Infinity", "NaN"];
 
 /***/ }),
-/* 95 */
+/* 97 */
 /*!***************************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/scope/lib/renamer.js ***!
   \***************************************************************/
@@ -18866,9 +19890,9 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = void 0;
 
-var _binding = __webpack_require__(/*! ../binding */ 96);
+var _binding = __webpack_require__(/*! ../binding */ 98);
 
-var _helperSplitExportDeclaration = __webpack_require__(/*! @babel/helper-split-export-declaration */ 97);
+var _helperSplitExportDeclaration = __webpack_require__(/*! @babel/helper-split-export-declaration */ 99);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
@@ -19007,7 +20031,7 @@ function skipAllButComputedMethodKey(path) {
 }
 
 /***/ }),
-/* 96 */
+/* 98 */
 /*!***********************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/scope/binding.js ***!
   \***********************************************************/
@@ -19092,7 +20116,7 @@ class Binding {
 exports.default = Binding;
 
 /***/ }),
-/* 97 */
+/* 99 */
 /*!**************************************************************************!*\
   !*** ./node_modules/@babel/helper-split-export-declaration/lib/index.js ***!
   \**************************************************************************/
@@ -19169,17 +20193,30 @@ function splitExportDeclaration(exportDeclaration) {
 }
 
 /***/ }),
-/* 98 */
-/*!**************************!*\
-  !*** external "globals" ***!
-  \**************************/
+/* 100 */
+/*!***************************************!*\
+  !*** ./node_modules/globals/index.js ***!
+  \***************************************/
 /*! no static exports found */
-/***/ (function(module, exports) {
+/***/ (function(module, exports, __webpack_require__) {
 
-module.exports = require("globals");
+"use strict";
+
+module.exports = __webpack_require__(/*! ./globals.json */ 101);
+
 
 /***/ }),
-/* 99 */
+/* 101 */
+/*!*******************************************!*\
+  !*** ./node_modules/globals/globals.json ***!
+  \*******************************************/
+/*! exports provided: builtin, es5, es2015, es2017, browser, worker, node, commonjs, amd, mocha, jasmine, jest, qunit, phantomjs, couch, rhino, nashorn, wsh, jquery, yui, shelljs, prototypejs, meteor, mongo, applescript, serviceworker, atomtest, embertest, protractor, shared-node-browser, webextensions, greasemonkey, devtools, default */
+/***/ (function(module) {
+
+module.exports = JSON.parse("{\"builtin\":{\"Array\":false,\"ArrayBuffer\":false,\"Atomics\":false,\"BigInt\":false,\"BigInt64Array\":false,\"BigUint64Array\":false,\"Boolean\":false,\"constructor\":false,\"DataView\":false,\"Date\":false,\"decodeURI\":false,\"decodeURIComponent\":false,\"encodeURI\":false,\"encodeURIComponent\":false,\"Error\":false,\"escape\":false,\"eval\":false,\"EvalError\":false,\"Float32Array\":false,\"Float64Array\":false,\"Function\":false,\"globalThis\":false,\"hasOwnProperty\":false,\"Infinity\":false,\"Int16Array\":false,\"Int32Array\":false,\"Int8Array\":false,\"isFinite\":false,\"isNaN\":false,\"isPrototypeOf\":false,\"JSON\":false,\"Map\":false,\"Math\":false,\"NaN\":false,\"Number\":false,\"Object\":false,\"parseFloat\":false,\"parseInt\":false,\"Promise\":false,\"propertyIsEnumerable\":false,\"Proxy\":false,\"RangeError\":false,\"ReferenceError\":false,\"Reflect\":false,\"RegExp\":false,\"Set\":false,\"SharedArrayBuffer\":false,\"String\":false,\"Symbol\":false,\"SyntaxError\":false,\"toLocaleString\":false,\"toString\":false,\"TypeError\":false,\"Uint16Array\":false,\"Uint32Array\":false,\"Uint8Array\":false,\"Uint8ClampedArray\":false,\"undefined\":false,\"unescape\":false,\"URIError\":false,\"valueOf\":false,\"WeakMap\":false,\"WeakSet\":false},\"es5\":{\"Array\":false,\"Boolean\":false,\"constructor\":false,\"Date\":false,\"decodeURI\":false,\"decodeURIComponent\":false,\"encodeURI\":false,\"encodeURIComponent\":false,\"Error\":false,\"escape\":false,\"eval\":false,\"EvalError\":false,\"Function\":false,\"hasOwnProperty\":false,\"Infinity\":false,\"isFinite\":false,\"isNaN\":false,\"isPrototypeOf\":false,\"JSON\":false,\"Math\":false,\"NaN\":false,\"Number\":false,\"Object\":false,\"parseFloat\":false,\"parseInt\":false,\"propertyIsEnumerable\":false,\"RangeError\":false,\"ReferenceError\":false,\"RegExp\":false,\"String\":false,\"SyntaxError\":false,\"toLocaleString\":false,\"toString\":false,\"TypeError\":false,\"undefined\":false,\"unescape\":false,\"URIError\":false,\"valueOf\":false},\"es2015\":{\"Array\":false,\"ArrayBuffer\":false,\"Boolean\":false,\"constructor\":false,\"DataView\":false,\"Date\":false,\"decodeURI\":false,\"decodeURIComponent\":false,\"encodeURI\":false,\"encodeURIComponent\":false,\"Error\":false,\"escape\":false,\"eval\":false,\"EvalError\":false,\"Float32Array\":false,\"Float64Array\":false,\"Function\":false,\"hasOwnProperty\":false,\"Infinity\":false,\"Int16Array\":false,\"Int32Array\":false,\"Int8Array\":false,\"isFinite\":false,\"isNaN\":false,\"isPrototypeOf\":false,\"JSON\":false,\"Map\":false,\"Math\":false,\"NaN\":false,\"Number\":false,\"Object\":false,\"parseFloat\":false,\"parseInt\":false,\"Promise\":false,\"propertyIsEnumerable\":false,\"Proxy\":false,\"RangeError\":false,\"ReferenceError\":false,\"Reflect\":false,\"RegExp\":false,\"Set\":false,\"String\":false,\"Symbol\":false,\"SyntaxError\":false,\"toLocaleString\":false,\"toString\":false,\"TypeError\":false,\"Uint16Array\":false,\"Uint32Array\":false,\"Uint8Array\":false,\"Uint8ClampedArray\":false,\"undefined\":false,\"unescape\":false,\"URIError\":false,\"valueOf\":false,\"WeakMap\":false,\"WeakSet\":false},\"es2017\":{\"Array\":false,\"ArrayBuffer\":false,\"Atomics\":false,\"Boolean\":false,\"constructor\":false,\"DataView\":false,\"Date\":false,\"decodeURI\":false,\"decodeURIComponent\":false,\"encodeURI\":false,\"encodeURIComponent\":false,\"Error\":false,\"escape\":false,\"eval\":false,\"EvalError\":false,\"Float32Array\":false,\"Float64Array\":false,\"Function\":false,\"hasOwnProperty\":false,\"Infinity\":false,\"Int16Array\":false,\"Int32Array\":false,\"Int8Array\":false,\"isFinite\":false,\"isNaN\":false,\"isPrototypeOf\":false,\"JSON\":false,\"Map\":false,\"Math\":false,\"NaN\":false,\"Number\":false,\"Object\":false,\"parseFloat\":false,\"parseInt\":false,\"Promise\":false,\"propertyIsEnumerable\":false,\"Proxy\":false,\"RangeError\":false,\"ReferenceError\":false,\"Reflect\":false,\"RegExp\":false,\"Set\":false,\"SharedArrayBuffer\":false,\"String\":false,\"Symbol\":false,\"SyntaxError\":false,\"toLocaleString\":false,\"toString\":false,\"TypeError\":false,\"Uint16Array\":false,\"Uint32Array\":false,\"Uint8Array\":false,\"Uint8ClampedArray\":false,\"undefined\":false,\"unescape\":false,\"URIError\":false,\"valueOf\":false,\"WeakMap\":false,\"WeakSet\":false},\"browser\":{\"AbortController\":false,\"AbortSignal\":false,\"addEventListener\":false,\"alert\":false,\"AnalyserNode\":false,\"Animation\":false,\"AnimationEffectReadOnly\":false,\"AnimationEffectTiming\":false,\"AnimationEffectTimingReadOnly\":false,\"AnimationEvent\":false,\"AnimationPlaybackEvent\":false,\"AnimationTimeline\":false,\"applicationCache\":false,\"ApplicationCache\":false,\"ApplicationCacheErrorEvent\":false,\"atob\":false,\"Attr\":false,\"Audio\":false,\"AudioBuffer\":false,\"AudioBufferSourceNode\":false,\"AudioContext\":false,\"AudioDestinationNode\":false,\"AudioListener\":false,\"AudioNode\":false,\"AudioParam\":false,\"AudioProcessingEvent\":false,\"AudioScheduledSourceNode\":false,\"AudioWorkletGlobalScope \":false,\"AudioWorkletNode\":false,\"AudioWorkletProcessor\":false,\"BarProp\":false,\"BaseAudioContext\":false,\"BatteryManager\":false,\"BeforeUnloadEvent\":false,\"BiquadFilterNode\":false,\"Blob\":false,\"BlobEvent\":false,\"blur\":false,\"BroadcastChannel\":false,\"btoa\":false,\"BudgetService\":false,\"ByteLengthQueuingStrategy\":false,\"Cache\":false,\"caches\":false,\"CacheStorage\":false,\"cancelAnimationFrame\":false,\"cancelIdleCallback\":false,\"CanvasCaptureMediaStreamTrack\":false,\"CanvasGradient\":false,\"CanvasPattern\":false,\"CanvasRenderingContext2D\":false,\"ChannelMergerNode\":false,\"ChannelSplitterNode\":false,\"CharacterData\":false,\"clearInterval\":false,\"clearTimeout\":false,\"clientInformation\":false,\"ClipboardEvent\":false,\"close\":false,\"closed\":false,\"CloseEvent\":false,\"Comment\":false,\"CompositionEvent\":false,\"confirm\":false,\"console\":false,\"ConstantSourceNode\":false,\"ConvolverNode\":false,\"CountQueuingStrategy\":false,\"createImageBitmap\":false,\"Credential\":false,\"CredentialsContainer\":false,\"crypto\":false,\"Crypto\":false,\"CryptoKey\":false,\"CSS\":false,\"CSSConditionRule\":false,\"CSSFontFaceRule\":false,\"CSSGroupingRule\":false,\"CSSImportRule\":false,\"CSSKeyframeRule\":false,\"CSSKeyframesRule\":false,\"CSSMediaRule\":false,\"CSSNamespaceRule\":false,\"CSSPageRule\":false,\"CSSRule\":false,\"CSSRuleList\":false,\"CSSStyleDeclaration\":false,\"CSSStyleRule\":false,\"CSSStyleSheet\":false,\"CSSSupportsRule\":false,\"CustomElementRegistry\":false,\"customElements\":false,\"CustomEvent\":false,\"DataTransfer\":false,\"DataTransferItem\":false,\"DataTransferItemList\":false,\"defaultstatus\":false,\"defaultStatus\":false,\"DelayNode\":false,\"DeviceMotionEvent\":false,\"DeviceOrientationEvent\":false,\"devicePixelRatio\":false,\"dispatchEvent\":false,\"document\":false,\"Document\":false,\"DocumentFragment\":false,\"DocumentType\":false,\"DOMError\":false,\"DOMException\":false,\"DOMImplementation\":false,\"DOMMatrix\":false,\"DOMMatrixReadOnly\":false,\"DOMParser\":false,\"DOMPoint\":false,\"DOMPointReadOnly\":false,\"DOMQuad\":false,\"DOMRect\":false,\"DOMRectReadOnly\":false,\"DOMStringList\":false,\"DOMStringMap\":false,\"DOMTokenList\":false,\"DragEvent\":false,\"DynamicsCompressorNode\":false,\"Element\":false,\"ErrorEvent\":false,\"event\":false,\"Event\":false,\"EventSource\":false,\"EventTarget\":false,\"external\":false,\"fetch\":false,\"File\":false,\"FileList\":false,\"FileReader\":false,\"find\":false,\"focus\":false,\"FocusEvent\":false,\"FontFace\":false,\"FontFaceSetLoadEvent\":false,\"FormData\":false,\"frameElement\":false,\"frames\":false,\"GainNode\":false,\"Gamepad\":false,\"GamepadButton\":false,\"GamepadEvent\":false,\"getComputedStyle\":false,\"getSelection\":false,\"HashChangeEvent\":false,\"Headers\":false,\"history\":false,\"History\":false,\"HTMLAllCollection\":false,\"HTMLAnchorElement\":false,\"HTMLAreaElement\":false,\"HTMLAudioElement\":false,\"HTMLBaseElement\":false,\"HTMLBodyElement\":false,\"HTMLBRElement\":false,\"HTMLButtonElement\":false,\"HTMLCanvasElement\":false,\"HTMLCollection\":false,\"HTMLContentElement\":false,\"HTMLDataElement\":false,\"HTMLDataListElement\":false,\"HTMLDetailsElement\":false,\"HTMLDialogElement\":false,\"HTMLDirectoryElement\":false,\"HTMLDivElement\":false,\"HTMLDListElement\":false,\"HTMLDocument\":false,\"HTMLElement\":false,\"HTMLEmbedElement\":false,\"HTMLFieldSetElement\":false,\"HTMLFontElement\":false,\"HTMLFormControlsCollection\":false,\"HTMLFormElement\":false,\"HTMLFrameElement\":false,\"HTMLFrameSetElement\":false,\"HTMLHeadElement\":false,\"HTMLHeadingElement\":false,\"HTMLHRElement\":false,\"HTMLHtmlElement\":false,\"HTMLIFrameElement\":false,\"HTMLImageElement\":false,\"HTMLInputElement\":false,\"HTMLLabelElement\":false,\"HTMLLegendElement\":false,\"HTMLLIElement\":false,\"HTMLLinkElement\":false,\"HTMLMapElement\":false,\"HTMLMarqueeElement\":false,\"HTMLMediaElement\":false,\"HTMLMenuElement\":false,\"HTMLMetaElement\":false,\"HTMLMeterElement\":false,\"HTMLModElement\":false,\"HTMLObjectElement\":false,\"HTMLOListElement\":false,\"HTMLOptGroupElement\":false,\"HTMLOptionElement\":false,\"HTMLOptionsCollection\":false,\"HTMLOutputElement\":false,\"HTMLParagraphElement\":false,\"HTMLParamElement\":false,\"HTMLPictureElement\":false,\"HTMLPreElement\":false,\"HTMLProgressElement\":false,\"HTMLQuoteElement\":false,\"HTMLScriptElement\":false,\"HTMLSelectElement\":false,\"HTMLShadowElement\":false,\"HTMLSlotElement\":false,\"HTMLSourceElement\":false,\"HTMLSpanElement\":false,\"HTMLStyleElement\":false,\"HTMLTableCaptionElement\":false,\"HTMLTableCellElement\":false,\"HTMLTableColElement\":false,\"HTMLTableElement\":false,\"HTMLTableRowElement\":false,\"HTMLTableSectionElement\":false,\"HTMLTemplateElement\":false,\"HTMLTextAreaElement\":false,\"HTMLTimeElement\":false,\"HTMLTitleElement\":false,\"HTMLTrackElement\":false,\"HTMLUListElement\":false,\"HTMLUnknownElement\":false,\"HTMLVideoElement\":false,\"IDBCursor\":false,\"IDBCursorWithValue\":false,\"IDBDatabase\":false,\"IDBFactory\":false,\"IDBIndex\":false,\"IDBKeyRange\":false,\"IDBObjectStore\":false,\"IDBOpenDBRequest\":false,\"IDBRequest\":false,\"IDBTransaction\":false,\"IDBVersionChangeEvent\":false,\"IdleDeadline\":false,\"IIRFilterNode\":false,\"Image\":false,\"ImageBitmap\":false,\"ImageBitmapRenderingContext\":false,\"ImageCapture\":false,\"ImageData\":false,\"indexedDB\":false,\"innerHeight\":false,\"innerWidth\":false,\"InputEvent\":false,\"IntersectionObserver\":false,\"IntersectionObserverEntry\":false,\"Intl\":false,\"isSecureContext\":false,\"KeyboardEvent\":false,\"KeyframeEffect\":false,\"KeyframeEffectReadOnly\":false,\"length\":false,\"localStorage\":false,\"location\":true,\"Location\":false,\"locationbar\":false,\"matchMedia\":false,\"MediaDeviceInfo\":false,\"MediaDevices\":false,\"MediaElementAudioSourceNode\":false,\"MediaEncryptedEvent\":false,\"MediaError\":false,\"MediaKeyMessageEvent\":false,\"MediaKeySession\":false,\"MediaKeyStatusMap\":false,\"MediaKeySystemAccess\":false,\"MediaList\":false,\"MediaQueryList\":false,\"MediaQueryListEvent\":false,\"MediaRecorder\":false,\"MediaSettingsRange\":false,\"MediaSource\":false,\"MediaStream\":false,\"MediaStreamAudioDestinationNode\":false,\"MediaStreamAudioSourceNode\":false,\"MediaStreamEvent\":false,\"MediaStreamTrack\":false,\"MediaStreamTrackEvent\":false,\"menubar\":false,\"MessageChannel\":false,\"MessageEvent\":false,\"MessagePort\":false,\"MIDIAccess\":false,\"MIDIConnectionEvent\":false,\"MIDIInput\":false,\"MIDIInputMap\":false,\"MIDIMessageEvent\":false,\"MIDIOutput\":false,\"MIDIOutputMap\":false,\"MIDIPort\":false,\"MimeType\":false,\"MimeTypeArray\":false,\"MouseEvent\":false,\"moveBy\":false,\"moveTo\":false,\"MutationEvent\":false,\"MutationObserver\":false,\"MutationRecord\":false,\"name\":false,\"NamedNodeMap\":false,\"NavigationPreloadManager\":false,\"navigator\":false,\"Navigator\":false,\"NetworkInformation\":false,\"Node\":false,\"NodeFilter\":false,\"NodeIterator\":false,\"NodeList\":false,\"Notification\":false,\"OfflineAudioCompletionEvent\":false,\"OfflineAudioContext\":false,\"offscreenBuffering\":false,\"OffscreenCanvas\":true,\"onabort\":true,\"onafterprint\":true,\"onanimationend\":true,\"onanimationiteration\":true,\"onanimationstart\":true,\"onappinstalled\":true,\"onauxclick\":true,\"onbeforeinstallprompt\":true,\"onbeforeprint\":true,\"onbeforeunload\":true,\"onblur\":true,\"oncancel\":true,\"oncanplay\":true,\"oncanplaythrough\":true,\"onchange\":true,\"onclick\":true,\"onclose\":true,\"oncontextmenu\":true,\"oncuechange\":true,\"ondblclick\":true,\"ondevicemotion\":true,\"ondeviceorientation\":true,\"ondeviceorientationabsolute\":true,\"ondrag\":true,\"ondragend\":true,\"ondragenter\":true,\"ondragleave\":true,\"ondragover\":true,\"ondragstart\":true,\"ondrop\":true,\"ondurationchange\":true,\"onemptied\":true,\"onended\":true,\"onerror\":true,\"onfocus\":true,\"ongotpointercapture\":true,\"onhashchange\":true,\"oninput\":true,\"oninvalid\":true,\"onkeydown\":true,\"onkeypress\":true,\"onkeyup\":true,\"onlanguagechange\":true,\"onload\":true,\"onloadeddata\":true,\"onloadedmetadata\":true,\"onloadstart\":true,\"onlostpointercapture\":true,\"onmessage\":true,\"onmessageerror\":true,\"onmousedown\":true,\"onmouseenter\":true,\"onmouseleave\":true,\"onmousemove\":true,\"onmouseout\":true,\"onmouseover\":true,\"onmouseup\":true,\"onmousewheel\":true,\"onoffline\":true,\"ononline\":true,\"onpagehide\":true,\"onpageshow\":true,\"onpause\":true,\"onplay\":true,\"onplaying\":true,\"onpointercancel\":true,\"onpointerdown\":true,\"onpointerenter\":true,\"onpointerleave\":true,\"onpointermove\":true,\"onpointerout\":true,\"onpointerover\":true,\"onpointerup\":true,\"onpopstate\":true,\"onprogress\":true,\"onratechange\":true,\"onrejectionhandled\":true,\"onreset\":true,\"onresize\":true,\"onscroll\":true,\"onsearch\":true,\"onseeked\":true,\"onseeking\":true,\"onselect\":true,\"onstalled\":true,\"onstorage\":true,\"onsubmit\":true,\"onsuspend\":true,\"ontimeupdate\":true,\"ontoggle\":true,\"ontransitionend\":true,\"onunhandledrejection\":true,\"onunload\":true,\"onvolumechange\":true,\"onwaiting\":true,\"onwheel\":true,\"open\":false,\"openDatabase\":false,\"opener\":false,\"Option\":false,\"origin\":false,\"OscillatorNode\":false,\"outerHeight\":false,\"outerWidth\":false,\"PageTransitionEvent\":false,\"pageXOffset\":false,\"pageYOffset\":false,\"PannerNode\":false,\"parent\":false,\"Path2D\":false,\"PaymentAddress\":false,\"PaymentRequest\":false,\"PaymentRequestUpdateEvent\":false,\"PaymentResponse\":false,\"performance\":false,\"Performance\":false,\"PerformanceEntry\":false,\"PerformanceLongTaskTiming\":false,\"PerformanceMark\":false,\"PerformanceMeasure\":false,\"PerformanceNavigation\":false,\"PerformanceNavigationTiming\":false,\"PerformanceObserver\":false,\"PerformanceObserverEntryList\":false,\"PerformancePaintTiming\":false,\"PerformanceResourceTiming\":false,\"PerformanceTiming\":false,\"PeriodicWave\":false,\"Permissions\":false,\"PermissionStatus\":false,\"personalbar\":false,\"PhotoCapabilities\":false,\"Plugin\":false,\"PluginArray\":false,\"PointerEvent\":false,\"PopStateEvent\":false,\"postMessage\":false,\"Presentation\":false,\"PresentationAvailability\":false,\"PresentationConnection\":false,\"PresentationConnectionAvailableEvent\":false,\"PresentationConnectionCloseEvent\":false,\"PresentationConnectionList\":false,\"PresentationReceiver\":false,\"PresentationRequest\":false,\"print\":false,\"ProcessingInstruction\":false,\"ProgressEvent\":false,\"PromiseRejectionEvent\":false,\"prompt\":false,\"PushManager\":false,\"PushSubscription\":false,\"PushSubscriptionOptions\":false,\"queueMicrotask\":false,\"RadioNodeList\":false,\"Range\":false,\"ReadableStream\":false,\"registerProcessor\":false,\"RemotePlayback\":false,\"removeEventListener\":false,\"Request\":false,\"requestAnimationFrame\":false,\"requestIdleCallback\":false,\"resizeBy\":false,\"ResizeObserver\":false,\"ResizeObserverEntry\":false,\"resizeTo\":false,\"Response\":false,\"RTCCertificate\":false,\"RTCDataChannel\":false,\"RTCDataChannelEvent\":false,\"RTCDtlsTransport\":false,\"RTCIceCandidate\":false,\"RTCIceGatherer\":false,\"RTCIceTransport\":false,\"RTCPeerConnection\":false,\"RTCPeerConnectionIceEvent\":false,\"RTCRtpContributingSource\":false,\"RTCRtpReceiver\":false,\"RTCRtpSender\":false,\"RTCSctpTransport\":false,\"RTCSessionDescription\":false,\"RTCStatsReport\":false,\"RTCTrackEvent\":false,\"screen\":false,\"Screen\":false,\"screenLeft\":false,\"ScreenOrientation\":false,\"screenTop\":false,\"screenX\":false,\"screenY\":false,\"ScriptProcessorNode\":false,\"scroll\":false,\"scrollbars\":false,\"scrollBy\":false,\"scrollTo\":false,\"scrollX\":false,\"scrollY\":false,\"SecurityPolicyViolationEvent\":false,\"Selection\":false,\"self\":false,\"ServiceWorker\":false,\"ServiceWorkerContainer\":false,\"ServiceWorkerRegistration\":false,\"sessionStorage\":false,\"setInterval\":false,\"setTimeout\":false,\"ShadowRoot\":false,\"SharedWorker\":false,\"SourceBuffer\":false,\"SourceBufferList\":false,\"speechSynthesis\":false,\"SpeechSynthesisEvent\":false,\"SpeechSynthesisUtterance\":false,\"StaticRange\":false,\"status\":false,\"statusbar\":false,\"StereoPannerNode\":false,\"stop\":false,\"Storage\":false,\"StorageEvent\":false,\"StorageManager\":false,\"styleMedia\":false,\"StyleSheet\":false,\"StyleSheetList\":false,\"SubtleCrypto\":false,\"SVGAElement\":false,\"SVGAngle\":false,\"SVGAnimatedAngle\":false,\"SVGAnimatedBoolean\":false,\"SVGAnimatedEnumeration\":false,\"SVGAnimatedInteger\":false,\"SVGAnimatedLength\":false,\"SVGAnimatedLengthList\":false,\"SVGAnimatedNumber\":false,\"SVGAnimatedNumberList\":false,\"SVGAnimatedPreserveAspectRatio\":false,\"SVGAnimatedRect\":false,\"SVGAnimatedString\":false,\"SVGAnimatedTransformList\":false,\"SVGAnimateElement\":false,\"SVGAnimateMotionElement\":false,\"SVGAnimateTransformElement\":false,\"SVGAnimationElement\":false,\"SVGCircleElement\":false,\"SVGClipPathElement\":false,\"SVGComponentTransferFunctionElement\":false,\"SVGDefsElement\":false,\"SVGDescElement\":false,\"SVGDiscardElement\":false,\"SVGElement\":false,\"SVGEllipseElement\":false,\"SVGFEBlendElement\":false,\"SVGFEColorMatrixElement\":false,\"SVGFEComponentTransferElement\":false,\"SVGFECompositeElement\":false,\"SVGFEConvolveMatrixElement\":false,\"SVGFEDiffuseLightingElement\":false,\"SVGFEDisplacementMapElement\":false,\"SVGFEDistantLightElement\":false,\"SVGFEDropShadowElement\":false,\"SVGFEFloodElement\":false,\"SVGFEFuncAElement\":false,\"SVGFEFuncBElement\":false,\"SVGFEFuncGElement\":false,\"SVGFEFuncRElement\":false,\"SVGFEGaussianBlurElement\":false,\"SVGFEImageElement\":false,\"SVGFEMergeElement\":false,\"SVGFEMergeNodeElement\":false,\"SVGFEMorphologyElement\":false,\"SVGFEOffsetElement\":false,\"SVGFEPointLightElement\":false,\"SVGFESpecularLightingElement\":false,\"SVGFESpotLightElement\":false,\"SVGFETileElement\":false,\"SVGFETurbulenceElement\":false,\"SVGFilterElement\":false,\"SVGForeignObjectElement\":false,\"SVGGElement\":false,\"SVGGeometryElement\":false,\"SVGGradientElement\":false,\"SVGGraphicsElement\":false,\"SVGImageElement\":false,\"SVGLength\":false,\"SVGLengthList\":false,\"SVGLinearGradientElement\":false,\"SVGLineElement\":false,\"SVGMarkerElement\":false,\"SVGMaskElement\":false,\"SVGMatrix\":false,\"SVGMetadataElement\":false,\"SVGMPathElement\":false,\"SVGNumber\":false,\"SVGNumberList\":false,\"SVGPathElement\":false,\"SVGPatternElement\":false,\"SVGPoint\":false,\"SVGPointList\":false,\"SVGPolygonElement\":false,\"SVGPolylineElement\":false,\"SVGPreserveAspectRatio\":false,\"SVGRadialGradientElement\":false,\"SVGRect\":false,\"SVGRectElement\":false,\"SVGScriptElement\":false,\"SVGSetElement\":false,\"SVGStopElement\":false,\"SVGStringList\":false,\"SVGStyleElement\":false,\"SVGSVGElement\":false,\"SVGSwitchElement\":false,\"SVGSymbolElement\":false,\"SVGTextContentElement\":false,\"SVGTextElement\":false,\"SVGTextPathElement\":false,\"SVGTextPositioningElement\":false,\"SVGTitleElement\":false,\"SVGTransform\":false,\"SVGTransformList\":false,\"SVGTSpanElement\":false,\"SVGUnitTypes\":false,\"SVGUseElement\":false,\"SVGViewElement\":false,\"TaskAttributionTiming\":false,\"Text\":false,\"TextDecoder\":false,\"TextEncoder\":false,\"TextEvent\":false,\"TextMetrics\":false,\"TextTrack\":false,\"TextTrackCue\":false,\"TextTrackCueList\":false,\"TextTrackList\":false,\"TimeRanges\":false,\"toolbar\":false,\"top\":false,\"Touch\":false,\"TouchEvent\":false,\"TouchList\":false,\"TrackEvent\":false,\"TransitionEvent\":false,\"TreeWalker\":false,\"UIEvent\":false,\"URL\":false,\"URLSearchParams\":false,\"ValidityState\":false,\"visualViewport\":false,\"VisualViewport\":false,\"VTTCue\":false,\"WaveShaperNode\":false,\"WebAssembly\":false,\"WebGL2RenderingContext\":false,\"WebGLActiveInfo\":false,\"WebGLBuffer\":false,\"WebGLContextEvent\":false,\"WebGLFramebuffer\":false,\"WebGLProgram\":false,\"WebGLQuery\":false,\"WebGLRenderbuffer\":false,\"WebGLRenderingContext\":false,\"WebGLSampler\":false,\"WebGLShader\":false,\"WebGLShaderPrecisionFormat\":false,\"WebGLSync\":false,\"WebGLTexture\":false,\"WebGLTransformFeedback\":false,\"WebGLUniformLocation\":false,\"WebGLVertexArrayObject\":false,\"WebSocket\":false,\"WheelEvent\":false,\"window\":false,\"Window\":false,\"Worker\":false,\"WritableStream\":false,\"XMLDocument\":false,\"XMLHttpRequest\":false,\"XMLHttpRequestEventTarget\":false,\"XMLHttpRequestUpload\":false,\"XMLSerializer\":false,\"XPathEvaluator\":false,\"XPathExpression\":false,\"XPathResult\":false,\"XSLTProcessor\":false},\"worker\":{\"addEventListener\":false,\"applicationCache\":false,\"atob\":false,\"Blob\":false,\"BroadcastChannel\":false,\"btoa\":false,\"Cache\":false,\"caches\":false,\"clearInterval\":false,\"clearTimeout\":false,\"close\":true,\"console\":false,\"fetch\":false,\"FileReaderSync\":false,\"FormData\":false,\"Headers\":false,\"IDBCursor\":false,\"IDBCursorWithValue\":false,\"IDBDatabase\":false,\"IDBFactory\":false,\"IDBIndex\":false,\"IDBKeyRange\":false,\"IDBObjectStore\":false,\"IDBOpenDBRequest\":false,\"IDBRequest\":false,\"IDBTransaction\":false,\"IDBVersionChangeEvent\":false,\"ImageData\":false,\"importScripts\":true,\"indexedDB\":false,\"location\":false,\"MessageChannel\":false,\"MessagePort\":false,\"name\":false,\"navigator\":false,\"Notification\":false,\"onclose\":true,\"onconnect\":true,\"onerror\":true,\"onlanguagechange\":true,\"onmessage\":true,\"onoffline\":true,\"ononline\":true,\"onrejectionhandled\":true,\"onunhandledrejection\":true,\"performance\":false,\"Performance\":false,\"PerformanceEntry\":false,\"PerformanceMark\":false,\"PerformanceMeasure\":false,\"PerformanceNavigation\":false,\"PerformanceResourceTiming\":false,\"PerformanceTiming\":false,\"postMessage\":true,\"Promise\":false,\"queueMicrotask\":false,\"removeEventListener\":false,\"Request\":false,\"Response\":false,\"self\":true,\"ServiceWorkerRegistration\":false,\"setInterval\":false,\"setTimeout\":false,\"TextDecoder\":false,\"TextEncoder\":false,\"URL\":false,\"URLSearchParams\":false,\"WebSocket\":false,\"Worker\":false,\"WorkerGlobalScope\":false,\"XMLHttpRequest\":false},\"node\":{\"__dirname\":false,\"__filename\":false,\"Buffer\":false,\"clearImmediate\":false,\"clearInterval\":false,\"clearTimeout\":false,\"console\":false,\"exports\":true,\"global\":false,\"Intl\":false,\"module\":false,\"process\":false,\"queueMicrotask\":false,\"require\":false,\"setImmediate\":false,\"setInterval\":false,\"setTimeout\":false,\"TextDecoder\":false,\"TextEncoder\":false,\"URL\":false,\"URLSearchParams\":false},\"commonjs\":{\"exports\":true,\"global\":false,\"module\":false,\"require\":false},\"amd\":{\"define\":false,\"require\":false},\"mocha\":{\"after\":false,\"afterEach\":false,\"before\":false,\"beforeEach\":false,\"context\":false,\"describe\":false,\"it\":false,\"mocha\":false,\"run\":false,\"setup\":false,\"specify\":false,\"suite\":false,\"suiteSetup\":false,\"suiteTeardown\":false,\"teardown\":false,\"test\":false,\"xcontext\":false,\"xdescribe\":false,\"xit\":false,\"xspecify\":false},\"jasmine\":{\"afterAll\":false,\"afterEach\":false,\"beforeAll\":false,\"beforeEach\":false,\"describe\":false,\"expect\":false,\"fail\":false,\"fdescribe\":false,\"fit\":false,\"it\":false,\"jasmine\":false,\"pending\":false,\"runs\":false,\"spyOn\":false,\"spyOnProperty\":false,\"waits\":false,\"waitsFor\":false,\"xdescribe\":false,\"xit\":false},\"jest\":{\"afterAll\":false,\"afterEach\":false,\"beforeAll\":false,\"beforeEach\":false,\"describe\":false,\"expect\":false,\"fdescribe\":false,\"fit\":false,\"it\":false,\"jest\":false,\"pit\":false,\"require\":false,\"test\":false,\"xdescribe\":false,\"xit\":false,\"xtest\":false},\"qunit\":{\"asyncTest\":false,\"deepEqual\":false,\"equal\":false,\"expect\":false,\"module\":false,\"notDeepEqual\":false,\"notEqual\":false,\"notOk\":false,\"notPropEqual\":false,\"notStrictEqual\":false,\"ok\":false,\"propEqual\":false,\"QUnit\":false,\"raises\":false,\"start\":false,\"stop\":false,\"strictEqual\":false,\"test\":false,\"throws\":false},\"phantomjs\":{\"console\":true,\"exports\":true,\"phantom\":true,\"require\":true,\"WebPage\":true},\"couch\":{\"emit\":false,\"exports\":false,\"getRow\":false,\"log\":false,\"module\":false,\"provides\":false,\"require\":false,\"respond\":false,\"send\":false,\"start\":false,\"sum\":false},\"rhino\":{\"defineClass\":false,\"deserialize\":false,\"gc\":false,\"help\":false,\"importClass\":false,\"importPackage\":false,\"java\":false,\"load\":false,\"loadClass\":false,\"Packages\":false,\"print\":false,\"quit\":false,\"readFile\":false,\"readUrl\":false,\"runCommand\":false,\"seal\":false,\"serialize\":false,\"spawn\":false,\"sync\":false,\"toint32\":false,\"version\":false},\"nashorn\":{\"__DIR__\":false,\"__FILE__\":false,\"__LINE__\":false,\"com\":false,\"edu\":false,\"exit\":false,\"java\":false,\"Java\":false,\"javafx\":false,\"JavaImporter\":false,\"javax\":false,\"JSAdapter\":false,\"load\":false,\"loadWithNewGlobal\":false,\"org\":false,\"Packages\":false,\"print\":false,\"quit\":false},\"wsh\":{\"ActiveXObject\":true,\"Enumerator\":true,\"GetObject\":true,\"ScriptEngine\":true,\"ScriptEngineBuildVersion\":true,\"ScriptEngineMajorVersion\":true,\"ScriptEngineMinorVersion\":true,\"VBArray\":true,\"WScript\":true,\"WSH\":true,\"XDomainRequest\":true},\"jquery\":{\"$\":false,\"jQuery\":false},\"yui\":{\"YAHOO\":false,\"YAHOO_config\":false,\"YUI\":false,\"YUI_config\":false},\"shelljs\":{\"cat\":false,\"cd\":false,\"chmod\":false,\"config\":false,\"cp\":false,\"dirs\":false,\"echo\":false,\"env\":false,\"error\":false,\"exec\":false,\"exit\":false,\"find\":false,\"grep\":false,\"ln\":false,\"ls\":false,\"mkdir\":false,\"mv\":false,\"popd\":false,\"pushd\":false,\"pwd\":false,\"rm\":false,\"sed\":false,\"set\":false,\"target\":false,\"tempdir\":false,\"test\":false,\"touch\":false,\"which\":false},\"prototypejs\":{\"$\":false,\"$$\":false,\"$A\":false,\"$break\":false,\"$continue\":false,\"$F\":false,\"$H\":false,\"$R\":false,\"$w\":false,\"Abstract\":false,\"Ajax\":false,\"Autocompleter\":false,\"Builder\":false,\"Class\":false,\"Control\":false,\"Draggable\":false,\"Draggables\":false,\"Droppables\":false,\"Effect\":false,\"Element\":false,\"Enumerable\":false,\"Event\":false,\"Field\":false,\"Form\":false,\"Hash\":false,\"Insertion\":false,\"ObjectRange\":false,\"PeriodicalExecuter\":false,\"Position\":false,\"Prototype\":false,\"Scriptaculous\":false,\"Selector\":false,\"Sortable\":false,\"SortableObserver\":false,\"Sound\":false,\"Template\":false,\"Toggle\":false,\"Try\":false},\"meteor\":{\"_\":false,\"$\":false,\"Accounts\":false,\"AccountsClient\":false,\"AccountsCommon\":false,\"AccountsServer\":false,\"App\":false,\"Assets\":false,\"Blaze\":false,\"check\":false,\"Cordova\":false,\"DDP\":false,\"DDPRateLimiter\":false,\"DDPServer\":false,\"Deps\":false,\"EJSON\":false,\"Email\":false,\"HTTP\":false,\"Log\":false,\"Match\":false,\"Meteor\":false,\"Mongo\":false,\"MongoInternals\":false,\"Npm\":false,\"Package\":false,\"Plugin\":false,\"process\":false,\"Random\":false,\"ReactiveDict\":false,\"ReactiveVar\":false,\"Router\":false,\"ServiceConfiguration\":false,\"Session\":false,\"share\":false,\"Spacebars\":false,\"Template\":false,\"Tinytest\":false,\"Tracker\":false,\"UI\":false,\"Utils\":false,\"WebApp\":false,\"WebAppInternals\":false},\"mongo\":{\"_isWindows\":false,\"_rand\":false,\"BulkWriteResult\":false,\"cat\":false,\"cd\":false,\"connect\":false,\"db\":false,\"getHostName\":false,\"getMemInfo\":false,\"hostname\":false,\"ISODate\":false,\"listFiles\":false,\"load\":false,\"ls\":false,\"md5sumFile\":false,\"mkdir\":false,\"Mongo\":false,\"NumberInt\":false,\"NumberLong\":false,\"ObjectId\":false,\"PlanCache\":false,\"print\":false,\"printjson\":false,\"pwd\":false,\"quit\":false,\"removeFile\":false,\"rs\":false,\"sh\":false,\"UUID\":false,\"version\":false,\"WriteResult\":false},\"applescript\":{\"$\":false,\"Application\":false,\"Automation\":false,\"console\":false,\"delay\":false,\"Library\":false,\"ObjC\":false,\"ObjectSpecifier\":false,\"Path\":false,\"Progress\":false,\"Ref\":false},\"serviceworker\":{\"addEventListener\":false,\"applicationCache\":false,\"atob\":false,\"Blob\":false,\"BroadcastChannel\":false,\"btoa\":false,\"Cache\":false,\"caches\":false,\"CacheStorage\":false,\"clearInterval\":false,\"clearTimeout\":false,\"Client\":false,\"clients\":false,\"Clients\":false,\"close\":true,\"console\":false,\"ExtendableEvent\":false,\"ExtendableMessageEvent\":false,\"fetch\":false,\"FetchEvent\":false,\"FileReaderSync\":false,\"FormData\":false,\"Headers\":false,\"IDBCursor\":false,\"IDBCursorWithValue\":false,\"IDBDatabase\":false,\"IDBFactory\":false,\"IDBIndex\":false,\"IDBKeyRange\":false,\"IDBObjectStore\":false,\"IDBOpenDBRequest\":false,\"IDBRequest\":false,\"IDBTransaction\":false,\"IDBVersionChangeEvent\":false,\"ImageData\":false,\"importScripts\":false,\"indexedDB\":false,\"location\":false,\"MessageChannel\":false,\"MessagePort\":false,\"name\":false,\"navigator\":false,\"Notification\":false,\"onclose\":true,\"onconnect\":true,\"onerror\":true,\"onfetch\":true,\"oninstall\":true,\"onlanguagechange\":true,\"onmessage\":true,\"onmessageerror\":true,\"onnotificationclick\":true,\"onnotificationclose\":true,\"onoffline\":true,\"ononline\":true,\"onpush\":true,\"onpushsubscriptionchange\":true,\"onrejectionhandled\":true,\"onsync\":true,\"onunhandledrejection\":true,\"performance\":false,\"Performance\":false,\"PerformanceEntry\":false,\"PerformanceMark\":false,\"PerformanceMeasure\":false,\"PerformanceNavigation\":false,\"PerformanceResourceTiming\":false,\"PerformanceTiming\":false,\"postMessage\":true,\"Promise\":false,\"queueMicrotask\":false,\"registration\":false,\"removeEventListener\":false,\"Request\":false,\"Response\":false,\"self\":false,\"ServiceWorker\":false,\"ServiceWorkerContainer\":false,\"ServiceWorkerGlobalScope\":false,\"ServiceWorkerMessageEvent\":false,\"ServiceWorkerRegistration\":false,\"setInterval\":false,\"setTimeout\":false,\"skipWaiting\":false,\"TextDecoder\":false,\"TextEncoder\":false,\"URL\":false,\"URLSearchParams\":false,\"WebSocket\":false,\"WindowClient\":false,\"Worker\":false,\"WorkerGlobalScope\":false,\"XMLHttpRequest\":false},\"atomtest\":{\"advanceClock\":false,\"fakeClearInterval\":false,\"fakeClearTimeout\":false,\"fakeSetInterval\":false,\"fakeSetTimeout\":false,\"resetTimeouts\":false,\"waitsForPromise\":false},\"embertest\":{\"andThen\":false,\"click\":false,\"currentPath\":false,\"currentRouteName\":false,\"currentURL\":false,\"fillIn\":false,\"find\":false,\"findAll\":false,\"findWithAssert\":false,\"keyEvent\":false,\"pauseTest\":false,\"resumeTest\":false,\"triggerEvent\":false,\"visit\":false,\"wait\":false},\"protractor\":{\"$\":false,\"$$\":false,\"browser\":false,\"by\":false,\"By\":false,\"DartObject\":false,\"element\":false,\"protractor\":false},\"shared-node-browser\":{\"clearInterval\":false,\"clearTimeout\":false,\"console\":false,\"setInterval\":false,\"setTimeout\":false,\"URL\":false,\"URLSearchParams\":false},\"webextensions\":{\"browser\":false,\"chrome\":false,\"opr\":false},\"greasemonkey\":{\"cloneInto\":false,\"createObjectIn\":false,\"exportFunction\":false,\"GM\":false,\"GM_addStyle\":false,\"GM_deleteValue\":false,\"GM_getResourceText\":false,\"GM_getResourceURL\":false,\"GM_getValue\":false,\"GM_info\":false,\"GM_listValues\":false,\"GM_log\":false,\"GM_openInTab\":false,\"GM_registerMenuCommand\":false,\"GM_setClipboard\":false,\"GM_setValue\":false,\"GM_xmlhttpRequest\":false,\"unsafeWindow\":false},\"devtools\":{\"$\":false,\"$_\":false,\"$$\":false,\"$0\":false,\"$1\":false,\"$2\":false,\"$3\":false,\"$4\":false,\"$x\":false,\"chrome\":false,\"clear\":false,\"copy\":false,\"debug\":false,\"dir\":false,\"dirxml\":false,\"getEventListeners\":false,\"inspect\":false,\"keys\":false,\"monitor\":false,\"monitorEvents\":false,\"profile\":false,\"profileEnd\":false,\"queryObjects\":false,\"table\":false,\"undebug\":false,\"unmonitor\":false,\"unmonitorEvents\":false,\"values\":false}}");
+
+/***/ }),
+/* 102 */
 /*!***************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/cache.js ***!
   \***************************************************/
@@ -19215,7 +20252,7 @@ function clearScope() {
 }
 
 /***/ }),
-/* 100 */
+/* 103 */
 /*!****************************************************!*\
   !*** ./node_modules/@babel/generator/lib/index.js ***!
   \****************************************************/
@@ -19231,9 +20268,9 @@ Object.defineProperty(exports, "__esModule", {
 exports.default = generate;
 exports.CodeGenerator = void 0;
 
-var _sourceMap = __webpack_require__(/*! ./source-map */ 101);
+var _sourceMap = __webpack_require__(/*! ./source-map */ 104);
 
-var _printer = __webpack_require__(/*! ./printer */ 103);
+var _printer = __webpack_require__(/*! ./printer */ 116);
 
 class Generator extends _printer.default {
   constructor(ast, opts = {}, code) {
@@ -19322,7 +20359,7 @@ function generate(ast, opts, code) {
 }
 
 /***/ }),
-/* 101 */
+/* 104 */
 /*!*********************************************************!*\
   !*** ./node_modules/@babel/generator/lib/source-map.js ***!
   \*********************************************************/
@@ -19337,7 +20374,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = void 0;
 
-var _sourceMap = __webpack_require__(/*! source-map */ 102);
+var _sourceMap = __webpack_require__(/*! source-map */ 105);
 
 class SourceMap {
   constructor(opts, code) {
@@ -19410,17 +20447,3085 @@ class SourceMap {
 exports.default = SourceMap;
 
 /***/ }),
-/* 102 */
-/*!*****************************!*\
-  !*** external "source-map" ***!
-  \*****************************/
+/* 105 */
+/*!***********************************************!*\
+  !*** ./node_modules/source-map/source-map.js ***!
+  \***********************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+/*
+ * Copyright 2009-2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE.txt or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+exports.SourceMapGenerator = __webpack_require__(/*! ./lib/source-map-generator */ 106).SourceMapGenerator;
+exports.SourceMapConsumer = __webpack_require__(/*! ./lib/source-map-consumer */ 112).SourceMapConsumer;
+exports.SourceNode = __webpack_require__(/*! ./lib/source-node */ 115).SourceNode;
+
+
+/***/ }),
+/* 106 */
+/*!*************************************************************!*\
+  !*** ./node_modules/source-map/lib/source-map-generator.js ***!
+  \*************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var base64VLQ = __webpack_require__(/*! ./base64-vlq */ 107);
+var util = __webpack_require__(/*! ./util */ 109);
+var ArraySet = __webpack_require__(/*! ./array-set */ 110).ArraySet;
+var MappingList = __webpack_require__(/*! ./mapping-list */ 111).MappingList;
+
+/**
+ * An instance of the SourceMapGenerator represents a source map which is
+ * being built incrementally. You may pass an object with the following
+ * properties:
+ *
+ *   - file: The filename of the generated source.
+ *   - sourceRoot: A root for all relative URLs in this source map.
+ */
+function SourceMapGenerator(aArgs) {
+  if (!aArgs) {
+    aArgs = {};
+  }
+  this._file = util.getArg(aArgs, 'file', null);
+  this._sourceRoot = util.getArg(aArgs, 'sourceRoot', null);
+  this._skipValidation = util.getArg(aArgs, 'skipValidation', false);
+  this._sources = new ArraySet();
+  this._names = new ArraySet();
+  this._mappings = new MappingList();
+  this._sourcesContents = null;
+}
+
+SourceMapGenerator.prototype._version = 3;
+
+/**
+ * Creates a new SourceMapGenerator based on a SourceMapConsumer
+ *
+ * @param aSourceMapConsumer The SourceMap.
+ */
+SourceMapGenerator.fromSourceMap =
+  function SourceMapGenerator_fromSourceMap(aSourceMapConsumer) {
+    var sourceRoot = aSourceMapConsumer.sourceRoot;
+    var generator = new SourceMapGenerator({
+      file: aSourceMapConsumer.file,
+      sourceRoot: sourceRoot
+    });
+    aSourceMapConsumer.eachMapping(function (mapping) {
+      var newMapping = {
+        generated: {
+          line: mapping.generatedLine,
+          column: mapping.generatedColumn
+        }
+      };
+
+      if (mapping.source != null) {
+        newMapping.source = mapping.source;
+        if (sourceRoot != null) {
+          newMapping.source = util.relative(sourceRoot, newMapping.source);
+        }
+
+        newMapping.original = {
+          line: mapping.originalLine,
+          column: mapping.originalColumn
+        };
+
+        if (mapping.name != null) {
+          newMapping.name = mapping.name;
+        }
+      }
+
+      generator.addMapping(newMapping);
+    });
+    aSourceMapConsumer.sources.forEach(function (sourceFile) {
+      var content = aSourceMapConsumer.sourceContentFor(sourceFile);
+      if (content != null) {
+        generator.setSourceContent(sourceFile, content);
+      }
+    });
+    return generator;
+  };
+
+/**
+ * Add a single mapping from original source line and column to the generated
+ * source's line and column for this source map being created. The mapping
+ * object should have the following properties:
+ *
+ *   - generated: An object with the generated line and column positions.
+ *   - original: An object with the original line and column positions.
+ *   - source: The original source file (relative to the sourceRoot).
+ *   - name: An optional original token name for this mapping.
+ */
+SourceMapGenerator.prototype.addMapping =
+  function SourceMapGenerator_addMapping(aArgs) {
+    var generated = util.getArg(aArgs, 'generated');
+    var original = util.getArg(aArgs, 'original', null);
+    var source = util.getArg(aArgs, 'source', null);
+    var name = util.getArg(aArgs, 'name', null);
+
+    if (!this._skipValidation) {
+      this._validateMapping(generated, original, source, name);
+    }
+
+    if (source != null) {
+      source = String(source);
+      if (!this._sources.has(source)) {
+        this._sources.add(source);
+      }
+    }
+
+    if (name != null) {
+      name = String(name);
+      if (!this._names.has(name)) {
+        this._names.add(name);
+      }
+    }
+
+    this._mappings.add({
+      generatedLine: generated.line,
+      generatedColumn: generated.column,
+      originalLine: original != null && original.line,
+      originalColumn: original != null && original.column,
+      source: source,
+      name: name
+    });
+  };
+
+/**
+ * Set the source content for a source file.
+ */
+SourceMapGenerator.prototype.setSourceContent =
+  function SourceMapGenerator_setSourceContent(aSourceFile, aSourceContent) {
+    var source = aSourceFile;
+    if (this._sourceRoot != null) {
+      source = util.relative(this._sourceRoot, source);
+    }
+
+    if (aSourceContent != null) {
+      // Add the source content to the _sourcesContents map.
+      // Create a new _sourcesContents map if the property is null.
+      if (!this._sourcesContents) {
+        this._sourcesContents = Object.create(null);
+      }
+      this._sourcesContents[util.toSetString(source)] = aSourceContent;
+    } else if (this._sourcesContents) {
+      // Remove the source file from the _sourcesContents map.
+      // If the _sourcesContents map is empty, set the property to null.
+      delete this._sourcesContents[util.toSetString(source)];
+      if (Object.keys(this._sourcesContents).length === 0) {
+        this._sourcesContents = null;
+      }
+    }
+  };
+
+/**
+ * Applies the mappings of a sub-source-map for a specific source file to the
+ * source map being generated. Each mapping to the supplied source file is
+ * rewritten using the supplied source map. Note: The resolution for the
+ * resulting mappings is the minimium of this map and the supplied map.
+ *
+ * @param aSourceMapConsumer The source map to be applied.
+ * @param aSourceFile Optional. The filename of the source file.
+ *        If omitted, SourceMapConsumer's file property will be used.
+ * @param aSourceMapPath Optional. The dirname of the path to the source map
+ *        to be applied. If relative, it is relative to the SourceMapConsumer.
+ *        This parameter is needed when the two source maps aren't in the same
+ *        directory, and the source map to be applied contains relative source
+ *        paths. If so, those relative source paths need to be rewritten
+ *        relative to the SourceMapGenerator.
+ */
+SourceMapGenerator.prototype.applySourceMap =
+  function SourceMapGenerator_applySourceMap(aSourceMapConsumer, aSourceFile, aSourceMapPath) {
+    var sourceFile = aSourceFile;
+    // If aSourceFile is omitted, we will use the file property of the SourceMap
+    if (aSourceFile == null) {
+      if (aSourceMapConsumer.file == null) {
+        throw new Error(
+          'SourceMapGenerator.prototype.applySourceMap requires either an explicit source file, ' +
+          'or the source map\'s "file" property. Both were omitted.'
+        );
+      }
+      sourceFile = aSourceMapConsumer.file;
+    }
+    var sourceRoot = this._sourceRoot;
+    // Make "sourceFile" relative if an absolute Url is passed.
+    if (sourceRoot != null) {
+      sourceFile = util.relative(sourceRoot, sourceFile);
+    }
+    // Applying the SourceMap can add and remove items from the sources and
+    // the names array.
+    var newSources = new ArraySet();
+    var newNames = new ArraySet();
+
+    // Find mappings for the "sourceFile"
+    this._mappings.unsortedForEach(function (mapping) {
+      if (mapping.source === sourceFile && mapping.originalLine != null) {
+        // Check if it can be mapped by the source map, then update the mapping.
+        var original = aSourceMapConsumer.originalPositionFor({
+          line: mapping.originalLine,
+          column: mapping.originalColumn
+        });
+        if (original.source != null) {
+          // Copy mapping
+          mapping.source = original.source;
+          if (aSourceMapPath != null) {
+            mapping.source = util.join(aSourceMapPath, mapping.source)
+          }
+          if (sourceRoot != null) {
+            mapping.source = util.relative(sourceRoot, mapping.source);
+          }
+          mapping.originalLine = original.line;
+          mapping.originalColumn = original.column;
+          if (original.name != null) {
+            mapping.name = original.name;
+          }
+        }
+      }
+
+      var source = mapping.source;
+      if (source != null && !newSources.has(source)) {
+        newSources.add(source);
+      }
+
+      var name = mapping.name;
+      if (name != null && !newNames.has(name)) {
+        newNames.add(name);
+      }
+
+    }, this);
+    this._sources = newSources;
+    this._names = newNames;
+
+    // Copy sourcesContents of applied map.
+    aSourceMapConsumer.sources.forEach(function (sourceFile) {
+      var content = aSourceMapConsumer.sourceContentFor(sourceFile);
+      if (content != null) {
+        if (aSourceMapPath != null) {
+          sourceFile = util.join(aSourceMapPath, sourceFile);
+        }
+        if (sourceRoot != null) {
+          sourceFile = util.relative(sourceRoot, sourceFile);
+        }
+        this.setSourceContent(sourceFile, content);
+      }
+    }, this);
+  };
+
+/**
+ * A mapping can have one of the three levels of data:
+ *
+ *   1. Just the generated position.
+ *   2. The Generated position, original position, and original source.
+ *   3. Generated and original position, original source, as well as a name
+ *      token.
+ *
+ * To maintain consistency, we validate that any new mapping being added falls
+ * in to one of these categories.
+ */
+SourceMapGenerator.prototype._validateMapping =
+  function SourceMapGenerator_validateMapping(aGenerated, aOriginal, aSource,
+                                              aName) {
+    // When aOriginal is truthy but has empty values for .line and .column,
+    // it is most likely a programmer error. In this case we throw a very
+    // specific error message to try to guide them the right way.
+    // For example: https://github.com/Polymer/polymer-bundler/pull/519
+    if (aOriginal && typeof aOriginal.line !== 'number' && typeof aOriginal.column !== 'number') {
+        throw new Error(
+            'original.line and original.column are not numbers -- you probably meant to omit ' +
+            'the original mapping entirely and only map the generated position. If so, pass ' +
+            'null for the original mapping instead of an object with empty or null values.'
+        );
+    }
+
+    if (aGenerated && 'line' in aGenerated && 'column' in aGenerated
+        && aGenerated.line > 0 && aGenerated.column >= 0
+        && !aOriginal && !aSource && !aName) {
+      // Case 1.
+      return;
+    }
+    else if (aGenerated && 'line' in aGenerated && 'column' in aGenerated
+             && aOriginal && 'line' in aOriginal && 'column' in aOriginal
+             && aGenerated.line > 0 && aGenerated.column >= 0
+             && aOriginal.line > 0 && aOriginal.column >= 0
+             && aSource) {
+      // Cases 2 and 3.
+      return;
+    }
+    else {
+      throw new Error('Invalid mapping: ' + JSON.stringify({
+        generated: aGenerated,
+        source: aSource,
+        original: aOriginal,
+        name: aName
+      }));
+    }
+  };
+
+/**
+ * Serialize the accumulated mappings in to the stream of base 64 VLQs
+ * specified by the source map format.
+ */
+SourceMapGenerator.prototype._serializeMappings =
+  function SourceMapGenerator_serializeMappings() {
+    var previousGeneratedColumn = 0;
+    var previousGeneratedLine = 1;
+    var previousOriginalColumn = 0;
+    var previousOriginalLine = 0;
+    var previousName = 0;
+    var previousSource = 0;
+    var result = '';
+    var next;
+    var mapping;
+    var nameIdx;
+    var sourceIdx;
+
+    var mappings = this._mappings.toArray();
+    for (var i = 0, len = mappings.length; i < len; i++) {
+      mapping = mappings[i];
+      next = ''
+
+      if (mapping.generatedLine !== previousGeneratedLine) {
+        previousGeneratedColumn = 0;
+        while (mapping.generatedLine !== previousGeneratedLine) {
+          next += ';';
+          previousGeneratedLine++;
+        }
+      }
+      else {
+        if (i > 0) {
+          if (!util.compareByGeneratedPositionsInflated(mapping, mappings[i - 1])) {
+            continue;
+          }
+          next += ',';
+        }
+      }
+
+      next += base64VLQ.encode(mapping.generatedColumn
+                                 - previousGeneratedColumn);
+      previousGeneratedColumn = mapping.generatedColumn;
+
+      if (mapping.source != null) {
+        sourceIdx = this._sources.indexOf(mapping.source);
+        next += base64VLQ.encode(sourceIdx - previousSource);
+        previousSource = sourceIdx;
+
+        // lines are stored 0-based in SourceMap spec version 3
+        next += base64VLQ.encode(mapping.originalLine - 1
+                                   - previousOriginalLine);
+        previousOriginalLine = mapping.originalLine - 1;
+
+        next += base64VLQ.encode(mapping.originalColumn
+                                   - previousOriginalColumn);
+        previousOriginalColumn = mapping.originalColumn;
+
+        if (mapping.name != null) {
+          nameIdx = this._names.indexOf(mapping.name);
+          next += base64VLQ.encode(nameIdx - previousName);
+          previousName = nameIdx;
+        }
+      }
+
+      result += next;
+    }
+
+    return result;
+  };
+
+SourceMapGenerator.prototype._generateSourcesContent =
+  function SourceMapGenerator_generateSourcesContent(aSources, aSourceRoot) {
+    return aSources.map(function (source) {
+      if (!this._sourcesContents) {
+        return null;
+      }
+      if (aSourceRoot != null) {
+        source = util.relative(aSourceRoot, source);
+      }
+      var key = util.toSetString(source);
+      return Object.prototype.hasOwnProperty.call(this._sourcesContents, key)
+        ? this._sourcesContents[key]
+        : null;
+    }, this);
+  };
+
+/**
+ * Externalize the source map.
+ */
+SourceMapGenerator.prototype.toJSON =
+  function SourceMapGenerator_toJSON() {
+    var map = {
+      version: this._version,
+      sources: this._sources.toArray(),
+      names: this._names.toArray(),
+      mappings: this._serializeMappings()
+    };
+    if (this._file != null) {
+      map.file = this._file;
+    }
+    if (this._sourceRoot != null) {
+      map.sourceRoot = this._sourceRoot;
+    }
+    if (this._sourcesContents) {
+      map.sourcesContent = this._generateSourcesContent(map.sources, map.sourceRoot);
+    }
+
+    return map;
+  };
+
+/**
+ * Render the source map being generated to a string.
+ */
+SourceMapGenerator.prototype.toString =
+  function SourceMapGenerator_toString() {
+    return JSON.stringify(this.toJSON());
+  };
+
+exports.SourceMapGenerator = SourceMapGenerator;
+
+
+/***/ }),
+/* 107 */
+/*!***************************************************!*\
+  !*** ./node_modules/source-map/lib/base64-vlq.js ***!
+  \***************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ *
+ * Based on the Base 64 VLQ implementation in Closure Compiler:
+ * https://code.google.com/p/closure-compiler/source/browse/trunk/src/com/google/debugging/sourcemap/Base64VLQ.java
+ *
+ * Copyright 2011 The Closure Compiler Authors. All rights reserved.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above
+ *    copyright notice, this list of conditions and the following
+ *    disclaimer in the documentation and/or other materials provided
+ *    with the distribution.
+ *  * Neither the name of Google Inc. nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+var base64 = __webpack_require__(/*! ./base64 */ 108);
+
+// A single base 64 digit can contain 6 bits of data. For the base 64 variable
+// length quantities we use in the source map spec, the first bit is the sign,
+// the next four bits are the actual value, and the 6th bit is the
+// continuation bit. The continuation bit tells us whether there are more
+// digits in this value following this digit.
+//
+//   Continuation
+//   |    Sign
+//   |    |
+//   V    V
+//   101011
+
+var VLQ_BASE_SHIFT = 5;
+
+// binary: 100000
+var VLQ_BASE = 1 << VLQ_BASE_SHIFT;
+
+// binary: 011111
+var VLQ_BASE_MASK = VLQ_BASE - 1;
+
+// binary: 100000
+var VLQ_CONTINUATION_BIT = VLQ_BASE;
+
+/**
+ * Converts from a two-complement value to a value where the sign bit is
+ * placed in the least significant bit.  For example, as decimals:
+ *   1 becomes 2 (10 binary), -1 becomes 3 (11 binary)
+ *   2 becomes 4 (100 binary), -2 becomes 5 (101 binary)
+ */
+function toVLQSigned(aValue) {
+  return aValue < 0
+    ? ((-aValue) << 1) + 1
+    : (aValue << 1) + 0;
+}
+
+/**
+ * Converts to a two-complement value from a value where the sign bit is
+ * placed in the least significant bit.  For example, as decimals:
+ *   2 (10 binary) becomes 1, 3 (11 binary) becomes -1
+ *   4 (100 binary) becomes 2, 5 (101 binary) becomes -2
+ */
+function fromVLQSigned(aValue) {
+  var isNegative = (aValue & 1) === 1;
+  var shifted = aValue >> 1;
+  return isNegative
+    ? -shifted
+    : shifted;
+}
+
+/**
+ * Returns the base 64 VLQ encoded value.
+ */
+exports.encode = function base64VLQ_encode(aValue) {
+  var encoded = "";
+  var digit;
+
+  var vlq = toVLQSigned(aValue);
+
+  do {
+    digit = vlq & VLQ_BASE_MASK;
+    vlq >>>= VLQ_BASE_SHIFT;
+    if (vlq > 0) {
+      // There are still more digits in this value, so we must make sure the
+      // continuation bit is marked.
+      digit |= VLQ_CONTINUATION_BIT;
+    }
+    encoded += base64.encode(digit);
+  } while (vlq > 0);
+
+  return encoded;
+};
+
+/**
+ * Decodes the next base 64 VLQ value from the given string and returns the
+ * value and the rest of the string via the out parameter.
+ */
+exports.decode = function base64VLQ_decode(aStr, aIndex, aOutParam) {
+  var strLen = aStr.length;
+  var result = 0;
+  var shift = 0;
+  var continuation, digit;
+
+  do {
+    if (aIndex >= strLen) {
+      throw new Error("Expected more digits in base 64 VLQ value.");
+    }
+
+    digit = base64.decode(aStr.charCodeAt(aIndex++));
+    if (digit === -1) {
+      throw new Error("Invalid base64 digit: " + aStr.charAt(aIndex - 1));
+    }
+
+    continuation = !!(digit & VLQ_CONTINUATION_BIT);
+    digit &= VLQ_BASE_MASK;
+    result = result + (digit << shift);
+    shift += VLQ_BASE_SHIFT;
+  } while (continuation);
+
+  aOutParam.value = fromVLQSigned(result);
+  aOutParam.rest = aIndex;
+};
+
+
+/***/ }),
+/* 108 */
+/*!***********************************************!*\
+  !*** ./node_modules/source-map/lib/base64.js ***!
+  \***********************************************/
 /*! no static exports found */
 /***/ (function(module, exports) {
 
-module.exports = require("source-map");
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var intToCharMap = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.split('');
+
+/**
+ * Encode an integer in the range of 0 to 63 to a single base 64 digit.
+ */
+exports.encode = function (number) {
+  if (0 <= number && number < intToCharMap.length) {
+    return intToCharMap[number];
+  }
+  throw new TypeError("Must be between 0 and 63: " + number);
+};
+
+/**
+ * Decode a single base 64 character code digit to an integer. Returns -1 on
+ * failure.
+ */
+exports.decode = function (charCode) {
+  var bigA = 65;     // 'A'
+  var bigZ = 90;     // 'Z'
+
+  var littleA = 97;  // 'a'
+  var littleZ = 122; // 'z'
+
+  var zero = 48;     // '0'
+  var nine = 57;     // '9'
+
+  var plus = 43;     // '+'
+  var slash = 47;    // '/'
+
+  var littleOffset = 26;
+  var numberOffset = 52;
+
+  // 0 - 25: ABCDEFGHIJKLMNOPQRSTUVWXYZ
+  if (bigA <= charCode && charCode <= bigZ) {
+    return (charCode - bigA);
+  }
+
+  // 26 - 51: abcdefghijklmnopqrstuvwxyz
+  if (littleA <= charCode && charCode <= littleZ) {
+    return (charCode - littleA + littleOffset);
+  }
+
+  // 52 - 61: 0123456789
+  if (zero <= charCode && charCode <= nine) {
+    return (charCode - zero + numberOffset);
+  }
+
+  // 62: +
+  if (charCode == plus) {
+    return 62;
+  }
+
+  // 63: /
+  if (charCode == slash) {
+    return 63;
+  }
+
+  // Invalid base64 digit.
+  return -1;
+};
+
 
 /***/ }),
-/* 103 */
+/* 109 */
+/*!*********************************************!*\
+  !*** ./node_modules/source-map/lib/util.js ***!
+  \*********************************************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+/**
+ * This is a helper function for getting values from parameter/options
+ * objects.
+ *
+ * @param args The object we are extracting values from
+ * @param name The name of the property we are getting.
+ * @param defaultValue An optional value to return if the property is missing
+ * from the object. If this is not specified and the property is missing, an
+ * error will be thrown.
+ */
+function getArg(aArgs, aName, aDefaultValue) {
+  if (aName in aArgs) {
+    return aArgs[aName];
+  } else if (arguments.length === 3) {
+    return aDefaultValue;
+  } else {
+    throw new Error('"' + aName + '" is a required argument.');
+  }
+}
+exports.getArg = getArg;
+
+var urlRegexp = /^(?:([\w+\-.]+):)?\/\/(?:(\w+:\w+)@)?([\w.]*)(?::(\d+))?(\S*)$/;
+var dataUrlRegexp = /^data:.+\,.+$/;
+
+function urlParse(aUrl) {
+  var match = aUrl.match(urlRegexp);
+  if (!match) {
+    return null;
+  }
+  return {
+    scheme: match[1],
+    auth: match[2],
+    host: match[3],
+    port: match[4],
+    path: match[5]
+  };
+}
+exports.urlParse = urlParse;
+
+function urlGenerate(aParsedUrl) {
+  var url = '';
+  if (aParsedUrl.scheme) {
+    url += aParsedUrl.scheme + ':';
+  }
+  url += '//';
+  if (aParsedUrl.auth) {
+    url += aParsedUrl.auth + '@';
+  }
+  if (aParsedUrl.host) {
+    url += aParsedUrl.host;
+  }
+  if (aParsedUrl.port) {
+    url += ":" + aParsedUrl.port
+  }
+  if (aParsedUrl.path) {
+    url += aParsedUrl.path;
+  }
+  return url;
+}
+exports.urlGenerate = urlGenerate;
+
+/**
+ * Normalizes a path, or the path portion of a URL:
+ *
+ * - Replaces consecutive slashes with one slash.
+ * - Removes unnecessary '.' parts.
+ * - Removes unnecessary '<dir>/..' parts.
+ *
+ * Based on code in the Node.js 'path' core module.
+ *
+ * @param aPath The path or url to normalize.
+ */
+function normalize(aPath) {
+  var path = aPath;
+  var url = urlParse(aPath);
+  if (url) {
+    if (!url.path) {
+      return aPath;
+    }
+    path = url.path;
+  }
+  var isAbsolute = exports.isAbsolute(path);
+
+  var parts = path.split(/\/+/);
+  for (var part, up = 0, i = parts.length - 1; i >= 0; i--) {
+    part = parts[i];
+    if (part === '.') {
+      parts.splice(i, 1);
+    } else if (part === '..') {
+      up++;
+    } else if (up > 0) {
+      if (part === '') {
+        // The first part is blank if the path is absolute. Trying to go
+        // above the root is a no-op. Therefore we can remove all '..' parts
+        // directly after the root.
+        parts.splice(i + 1, up);
+        up = 0;
+      } else {
+        parts.splice(i, 2);
+        up--;
+      }
+    }
+  }
+  path = parts.join('/');
+
+  if (path === '') {
+    path = isAbsolute ? '/' : '.';
+  }
+
+  if (url) {
+    url.path = path;
+    return urlGenerate(url);
+  }
+  return path;
+}
+exports.normalize = normalize;
+
+/**
+ * Joins two paths/URLs.
+ *
+ * @param aRoot The root path or URL.
+ * @param aPath The path or URL to be joined with the root.
+ *
+ * - If aPath is a URL or a data URI, aPath is returned, unless aPath is a
+ *   scheme-relative URL: Then the scheme of aRoot, if any, is prepended
+ *   first.
+ * - Otherwise aPath is a path. If aRoot is a URL, then its path portion
+ *   is updated with the result and aRoot is returned. Otherwise the result
+ *   is returned.
+ *   - If aPath is absolute, the result is aPath.
+ *   - Otherwise the two paths are joined with a slash.
+ * - Joining for example 'http://' and 'www.example.com' is also supported.
+ */
+function join(aRoot, aPath) {
+  if (aRoot === "") {
+    aRoot = ".";
+  }
+  if (aPath === "") {
+    aPath = ".";
+  }
+  var aPathUrl = urlParse(aPath);
+  var aRootUrl = urlParse(aRoot);
+  if (aRootUrl) {
+    aRoot = aRootUrl.path || '/';
+  }
+
+  // `join(foo, '//www.example.org')`
+  if (aPathUrl && !aPathUrl.scheme) {
+    if (aRootUrl) {
+      aPathUrl.scheme = aRootUrl.scheme;
+    }
+    return urlGenerate(aPathUrl);
+  }
+
+  if (aPathUrl || aPath.match(dataUrlRegexp)) {
+    return aPath;
+  }
+
+  // `join('http://', 'www.example.com')`
+  if (aRootUrl && !aRootUrl.host && !aRootUrl.path) {
+    aRootUrl.host = aPath;
+    return urlGenerate(aRootUrl);
+  }
+
+  var joined = aPath.charAt(0) === '/'
+    ? aPath
+    : normalize(aRoot.replace(/\/+$/, '') + '/' + aPath);
+
+  if (aRootUrl) {
+    aRootUrl.path = joined;
+    return urlGenerate(aRootUrl);
+  }
+  return joined;
+}
+exports.join = join;
+
+exports.isAbsolute = function (aPath) {
+  return aPath.charAt(0) === '/' || !!aPath.match(urlRegexp);
+};
+
+/**
+ * Make a path relative to a URL or another path.
+ *
+ * @param aRoot The root path or URL.
+ * @param aPath The path or URL to be made relative to aRoot.
+ */
+function relative(aRoot, aPath) {
+  if (aRoot === "") {
+    aRoot = ".";
+  }
+
+  aRoot = aRoot.replace(/\/$/, '');
+
+  // It is possible for the path to be above the root. In this case, simply
+  // checking whether the root is a prefix of the path won't work. Instead, we
+  // need to remove components from the root one by one, until either we find
+  // a prefix that fits, or we run out of components to remove.
+  var level = 0;
+  while (aPath.indexOf(aRoot + '/') !== 0) {
+    var index = aRoot.lastIndexOf("/");
+    if (index < 0) {
+      return aPath;
+    }
+
+    // If the only part of the root that is left is the scheme (i.e. http://,
+    // file:///, etc.), one or more slashes (/), or simply nothing at all, we
+    // have exhausted all components, so the path is not relative to the root.
+    aRoot = aRoot.slice(0, index);
+    if (aRoot.match(/^([^\/]+:\/)?\/*$/)) {
+      return aPath;
+    }
+
+    ++level;
+  }
+
+  // Make sure we add a "../" for each component we removed from the root.
+  return Array(level + 1).join("../") + aPath.substr(aRoot.length + 1);
+}
+exports.relative = relative;
+
+var supportsNullProto = (function () {
+  var obj = Object.create(null);
+  return !('__proto__' in obj);
+}());
+
+function identity (s) {
+  return s;
+}
+
+/**
+ * Because behavior goes wacky when you set `__proto__` on objects, we
+ * have to prefix all the strings in our set with an arbitrary character.
+ *
+ * See https://github.com/mozilla/source-map/pull/31 and
+ * https://github.com/mozilla/source-map/issues/30
+ *
+ * @param String aStr
+ */
+function toSetString(aStr) {
+  if (isProtoString(aStr)) {
+    return '$' + aStr;
+  }
+
+  return aStr;
+}
+exports.toSetString = supportsNullProto ? identity : toSetString;
+
+function fromSetString(aStr) {
+  if (isProtoString(aStr)) {
+    return aStr.slice(1);
+  }
+
+  return aStr;
+}
+exports.fromSetString = supportsNullProto ? identity : fromSetString;
+
+function isProtoString(s) {
+  if (!s) {
+    return false;
+  }
+
+  var length = s.length;
+
+  if (length < 9 /* "__proto__".length */) {
+    return false;
+  }
+
+  if (s.charCodeAt(length - 1) !== 95  /* '_' */ ||
+      s.charCodeAt(length - 2) !== 95  /* '_' */ ||
+      s.charCodeAt(length - 3) !== 111 /* 'o' */ ||
+      s.charCodeAt(length - 4) !== 116 /* 't' */ ||
+      s.charCodeAt(length - 5) !== 111 /* 'o' */ ||
+      s.charCodeAt(length - 6) !== 114 /* 'r' */ ||
+      s.charCodeAt(length - 7) !== 112 /* 'p' */ ||
+      s.charCodeAt(length - 8) !== 95  /* '_' */ ||
+      s.charCodeAt(length - 9) !== 95  /* '_' */) {
+    return false;
+  }
+
+  for (var i = length - 10; i >= 0; i--) {
+    if (s.charCodeAt(i) !== 36 /* '$' */) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Comparator between two mappings where the original positions are compared.
+ *
+ * Optionally pass in `true` as `onlyCompareGenerated` to consider two
+ * mappings with the same original source/line/column, but different generated
+ * line and column the same. Useful when searching for a mapping with a
+ * stubbed out mapping.
+ */
+function compareByOriginalPositions(mappingA, mappingB, onlyCompareOriginal) {
+  var cmp = mappingA.source - mappingB.source;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalLine - mappingB.originalLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalColumn - mappingB.originalColumn;
+  if (cmp !== 0 || onlyCompareOriginal) {
+    return cmp;
+  }
+
+  cmp = mappingA.generatedColumn - mappingB.generatedColumn;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.generatedLine - mappingB.generatedLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  return mappingA.name - mappingB.name;
+}
+exports.compareByOriginalPositions = compareByOriginalPositions;
+
+/**
+ * Comparator between two mappings with deflated source and name indices where
+ * the generated positions are compared.
+ *
+ * Optionally pass in `true` as `onlyCompareGenerated` to consider two
+ * mappings with the same generated line and column, but different
+ * source/name/original line and column the same. Useful when searching for a
+ * mapping with a stubbed out mapping.
+ */
+function compareByGeneratedPositionsDeflated(mappingA, mappingB, onlyCompareGenerated) {
+  var cmp = mappingA.generatedLine - mappingB.generatedLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.generatedColumn - mappingB.generatedColumn;
+  if (cmp !== 0 || onlyCompareGenerated) {
+    return cmp;
+  }
+
+  cmp = mappingA.source - mappingB.source;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalLine - mappingB.originalLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalColumn - mappingB.originalColumn;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  return mappingA.name - mappingB.name;
+}
+exports.compareByGeneratedPositionsDeflated = compareByGeneratedPositionsDeflated;
+
+function strcmp(aStr1, aStr2) {
+  if (aStr1 === aStr2) {
+    return 0;
+  }
+
+  if (aStr1 > aStr2) {
+    return 1;
+  }
+
+  return -1;
+}
+
+/**
+ * Comparator between two mappings with inflated source and name strings where
+ * the generated positions are compared.
+ */
+function compareByGeneratedPositionsInflated(mappingA, mappingB) {
+  var cmp = mappingA.generatedLine - mappingB.generatedLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.generatedColumn - mappingB.generatedColumn;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = strcmp(mappingA.source, mappingB.source);
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalLine - mappingB.originalLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalColumn - mappingB.originalColumn;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  return strcmp(mappingA.name, mappingB.name);
+}
+exports.compareByGeneratedPositionsInflated = compareByGeneratedPositionsInflated;
+
+
+/***/ }),
+/* 110 */
+/*!**************************************************!*\
+  !*** ./node_modules/source-map/lib/array-set.js ***!
+  \**************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var util = __webpack_require__(/*! ./util */ 109);
+var has = Object.prototype.hasOwnProperty;
+var hasNativeMap = typeof Map !== "undefined";
+
+/**
+ * A data structure which is a combination of an array and a set. Adding a new
+ * member is O(1), testing for membership is O(1), and finding the index of an
+ * element is O(1). Removing elements from the set is not supported. Only
+ * strings are supported for membership.
+ */
+function ArraySet() {
+  this._array = [];
+  this._set = hasNativeMap ? new Map() : Object.create(null);
+}
+
+/**
+ * Static method for creating ArraySet instances from an existing array.
+ */
+ArraySet.fromArray = function ArraySet_fromArray(aArray, aAllowDuplicates) {
+  var set = new ArraySet();
+  for (var i = 0, len = aArray.length; i < len; i++) {
+    set.add(aArray[i], aAllowDuplicates);
+  }
+  return set;
+};
+
+/**
+ * Return how many unique items are in this ArraySet. If duplicates have been
+ * added, than those do not count towards the size.
+ *
+ * @returns Number
+ */
+ArraySet.prototype.size = function ArraySet_size() {
+  return hasNativeMap ? this._set.size : Object.getOwnPropertyNames(this._set).length;
+};
+
+/**
+ * Add the given string to this set.
+ *
+ * @param String aStr
+ */
+ArraySet.prototype.add = function ArraySet_add(aStr, aAllowDuplicates) {
+  var sStr = hasNativeMap ? aStr : util.toSetString(aStr);
+  var isDuplicate = hasNativeMap ? this.has(aStr) : has.call(this._set, sStr);
+  var idx = this._array.length;
+  if (!isDuplicate || aAllowDuplicates) {
+    this._array.push(aStr);
+  }
+  if (!isDuplicate) {
+    if (hasNativeMap) {
+      this._set.set(aStr, idx);
+    } else {
+      this._set[sStr] = idx;
+    }
+  }
+};
+
+/**
+ * Is the given string a member of this set?
+ *
+ * @param String aStr
+ */
+ArraySet.prototype.has = function ArraySet_has(aStr) {
+  if (hasNativeMap) {
+    return this._set.has(aStr);
+  } else {
+    var sStr = util.toSetString(aStr);
+    return has.call(this._set, sStr);
+  }
+};
+
+/**
+ * What is the index of the given string in the array?
+ *
+ * @param String aStr
+ */
+ArraySet.prototype.indexOf = function ArraySet_indexOf(aStr) {
+  if (hasNativeMap) {
+    var idx = this._set.get(aStr);
+    if (idx >= 0) {
+        return idx;
+    }
+  } else {
+    var sStr = util.toSetString(aStr);
+    if (has.call(this._set, sStr)) {
+      return this._set[sStr];
+    }
+  }
+
+  throw new Error('"' + aStr + '" is not in the set.');
+};
+
+/**
+ * What is the element at the given index?
+ *
+ * @param Number aIdx
+ */
+ArraySet.prototype.at = function ArraySet_at(aIdx) {
+  if (aIdx >= 0 && aIdx < this._array.length) {
+    return this._array[aIdx];
+  }
+  throw new Error('No element indexed by ' + aIdx);
+};
+
+/**
+ * Returns the array representation of this set (which has the proper indices
+ * indicated by indexOf). Note that this is a copy of the internal array used
+ * for storing the members so that no one can mess with internal state.
+ */
+ArraySet.prototype.toArray = function ArraySet_toArray() {
+  return this._array.slice();
+};
+
+exports.ArraySet = ArraySet;
+
+
+/***/ }),
+/* 111 */
+/*!*****************************************************!*\
+  !*** ./node_modules/source-map/lib/mapping-list.js ***!
+  \*****************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2014 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var util = __webpack_require__(/*! ./util */ 109);
+
+/**
+ * Determine whether mappingB is after mappingA with respect to generated
+ * position.
+ */
+function generatedPositionAfter(mappingA, mappingB) {
+  // Optimized for most common case
+  var lineA = mappingA.generatedLine;
+  var lineB = mappingB.generatedLine;
+  var columnA = mappingA.generatedColumn;
+  var columnB = mappingB.generatedColumn;
+  return lineB > lineA || lineB == lineA && columnB >= columnA ||
+         util.compareByGeneratedPositionsInflated(mappingA, mappingB) <= 0;
+}
+
+/**
+ * A data structure to provide a sorted view of accumulated mappings in a
+ * performance conscious manner. It trades a neglibable overhead in general
+ * case for a large speedup in case of mappings being added in order.
+ */
+function MappingList() {
+  this._array = [];
+  this._sorted = true;
+  // Serves as infimum
+  this._last = {generatedLine: -1, generatedColumn: 0};
+}
+
+/**
+ * Iterate through internal items. This method takes the same arguments that
+ * `Array.prototype.forEach` takes.
+ *
+ * NOTE: The order of the mappings is NOT guaranteed.
+ */
+MappingList.prototype.unsortedForEach =
+  function MappingList_forEach(aCallback, aThisArg) {
+    this._array.forEach(aCallback, aThisArg);
+  };
+
+/**
+ * Add the given source mapping.
+ *
+ * @param Object aMapping
+ */
+MappingList.prototype.add = function MappingList_add(aMapping) {
+  if (generatedPositionAfter(this._last, aMapping)) {
+    this._last = aMapping;
+    this._array.push(aMapping);
+  } else {
+    this._sorted = false;
+    this._array.push(aMapping);
+  }
+};
+
+/**
+ * Returns the flat, sorted array of mappings. The mappings are sorted by
+ * generated position.
+ *
+ * WARNING: This method returns internal data without copying, for
+ * performance. The return value must NOT be mutated, and should be treated as
+ * an immutable borrow. If you want to take ownership, you must make your own
+ * copy.
+ */
+MappingList.prototype.toArray = function MappingList_toArray() {
+  if (!this._sorted) {
+    this._array.sort(util.compareByGeneratedPositionsInflated);
+    this._sorted = true;
+  }
+  return this._array;
+};
+
+exports.MappingList = MappingList;
+
+
+/***/ }),
+/* 112 */
+/*!************************************************************!*\
+  !*** ./node_modules/source-map/lib/source-map-consumer.js ***!
+  \************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var util = __webpack_require__(/*! ./util */ 109);
+var binarySearch = __webpack_require__(/*! ./binary-search */ 113);
+var ArraySet = __webpack_require__(/*! ./array-set */ 110).ArraySet;
+var base64VLQ = __webpack_require__(/*! ./base64-vlq */ 107);
+var quickSort = __webpack_require__(/*! ./quick-sort */ 114).quickSort;
+
+function SourceMapConsumer(aSourceMap) {
+  var sourceMap = aSourceMap;
+  if (typeof aSourceMap === 'string') {
+    sourceMap = JSON.parse(aSourceMap.replace(/^\)\]\}'/, ''));
+  }
+
+  return sourceMap.sections != null
+    ? new IndexedSourceMapConsumer(sourceMap)
+    : new BasicSourceMapConsumer(sourceMap);
+}
+
+SourceMapConsumer.fromSourceMap = function(aSourceMap) {
+  return BasicSourceMapConsumer.fromSourceMap(aSourceMap);
+}
+
+/**
+ * The version of the source mapping spec that we are consuming.
+ */
+SourceMapConsumer.prototype._version = 3;
+
+// `__generatedMappings` and `__originalMappings` are arrays that hold the
+// parsed mapping coordinates from the source map's "mappings" attribute. They
+// are lazily instantiated, accessed via the `_generatedMappings` and
+// `_originalMappings` getters respectively, and we only parse the mappings
+// and create these arrays once queried for a source location. We jump through
+// these hoops because there can be many thousands of mappings, and parsing
+// them is expensive, so we only want to do it if we must.
+//
+// Each object in the arrays is of the form:
+//
+//     {
+//       generatedLine: The line number in the generated code,
+//       generatedColumn: The column number in the generated code,
+//       source: The path to the original source file that generated this
+//               chunk of code,
+//       originalLine: The line number in the original source that
+//                     corresponds to this chunk of generated code,
+//       originalColumn: The column number in the original source that
+//                       corresponds to this chunk of generated code,
+//       name: The name of the original symbol which generated this chunk of
+//             code.
+//     }
+//
+// All properties except for `generatedLine` and `generatedColumn` can be
+// `null`.
+//
+// `_generatedMappings` is ordered by the generated positions.
+//
+// `_originalMappings` is ordered by the original positions.
+
+SourceMapConsumer.prototype.__generatedMappings = null;
+Object.defineProperty(SourceMapConsumer.prototype, '_generatedMappings', {
+  get: function () {
+    if (!this.__generatedMappings) {
+      this._parseMappings(this._mappings, this.sourceRoot);
+    }
+
+    return this.__generatedMappings;
+  }
+});
+
+SourceMapConsumer.prototype.__originalMappings = null;
+Object.defineProperty(SourceMapConsumer.prototype, '_originalMappings', {
+  get: function () {
+    if (!this.__originalMappings) {
+      this._parseMappings(this._mappings, this.sourceRoot);
+    }
+
+    return this.__originalMappings;
+  }
+});
+
+SourceMapConsumer.prototype._charIsMappingSeparator =
+  function SourceMapConsumer_charIsMappingSeparator(aStr, index) {
+    var c = aStr.charAt(index);
+    return c === ";" || c === ",";
+  };
+
+/**
+ * Parse the mappings in a string in to a data structure which we can easily
+ * query (the ordered arrays in the `this.__generatedMappings` and
+ * `this.__originalMappings` properties).
+ */
+SourceMapConsumer.prototype._parseMappings =
+  function SourceMapConsumer_parseMappings(aStr, aSourceRoot) {
+    throw new Error("Subclasses must implement _parseMappings");
+  };
+
+SourceMapConsumer.GENERATED_ORDER = 1;
+SourceMapConsumer.ORIGINAL_ORDER = 2;
+
+SourceMapConsumer.GREATEST_LOWER_BOUND = 1;
+SourceMapConsumer.LEAST_UPPER_BOUND = 2;
+
+/**
+ * Iterate over each mapping between an original source/line/column and a
+ * generated line/column in this source map.
+ *
+ * @param Function aCallback
+ *        The function that is called with each mapping.
+ * @param Object aContext
+ *        Optional. If specified, this object will be the value of `this` every
+ *        time that `aCallback` is called.
+ * @param aOrder
+ *        Either `SourceMapConsumer.GENERATED_ORDER` or
+ *        `SourceMapConsumer.ORIGINAL_ORDER`. Specifies whether you want to
+ *        iterate over the mappings sorted by the generated file's line/column
+ *        order or the original's source/line/column order, respectively. Defaults to
+ *        `SourceMapConsumer.GENERATED_ORDER`.
+ */
+SourceMapConsumer.prototype.eachMapping =
+  function SourceMapConsumer_eachMapping(aCallback, aContext, aOrder) {
+    var context = aContext || null;
+    var order = aOrder || SourceMapConsumer.GENERATED_ORDER;
+
+    var mappings;
+    switch (order) {
+    case SourceMapConsumer.GENERATED_ORDER:
+      mappings = this._generatedMappings;
+      break;
+    case SourceMapConsumer.ORIGINAL_ORDER:
+      mappings = this._originalMappings;
+      break;
+    default:
+      throw new Error("Unknown order of iteration.");
+    }
+
+    var sourceRoot = this.sourceRoot;
+    mappings.map(function (mapping) {
+      var source = mapping.source === null ? null : this._sources.at(mapping.source);
+      if (source != null && sourceRoot != null) {
+        source = util.join(sourceRoot, source);
+      }
+      return {
+        source: source,
+        generatedLine: mapping.generatedLine,
+        generatedColumn: mapping.generatedColumn,
+        originalLine: mapping.originalLine,
+        originalColumn: mapping.originalColumn,
+        name: mapping.name === null ? null : this._names.at(mapping.name)
+      };
+    }, this).forEach(aCallback, context);
+  };
+
+/**
+ * Returns all generated line and column information for the original source,
+ * line, and column provided. If no column is provided, returns all mappings
+ * corresponding to a either the line we are searching for or the next
+ * closest line that has any mappings. Otherwise, returns all mappings
+ * corresponding to the given line and either the column we are searching for
+ * or the next closest column that has any offsets.
+ *
+ * The only argument is an object with the following properties:
+ *
+ *   - source: The filename of the original source.
+ *   - line: The line number in the original source.
+ *   - column: Optional. the column number in the original source.
+ *
+ * and an array of objects is returned, each with the following properties:
+ *
+ *   - line: The line number in the generated source, or null.
+ *   - column: The column number in the generated source, or null.
+ */
+SourceMapConsumer.prototype.allGeneratedPositionsFor =
+  function SourceMapConsumer_allGeneratedPositionsFor(aArgs) {
+    var line = util.getArg(aArgs, 'line');
+
+    // When there is no exact match, BasicSourceMapConsumer.prototype._findMapping
+    // returns the index of the closest mapping less than the needle. By
+    // setting needle.originalColumn to 0, we thus find the last mapping for
+    // the given line, provided such a mapping exists.
+    var needle = {
+      source: util.getArg(aArgs, 'source'),
+      originalLine: line,
+      originalColumn: util.getArg(aArgs, 'column', 0)
+    };
+
+    if (this.sourceRoot != null) {
+      needle.source = util.relative(this.sourceRoot, needle.source);
+    }
+    if (!this._sources.has(needle.source)) {
+      return [];
+    }
+    needle.source = this._sources.indexOf(needle.source);
+
+    var mappings = [];
+
+    var index = this._findMapping(needle,
+                                  this._originalMappings,
+                                  "originalLine",
+                                  "originalColumn",
+                                  util.compareByOriginalPositions,
+                                  binarySearch.LEAST_UPPER_BOUND);
+    if (index >= 0) {
+      var mapping = this._originalMappings[index];
+
+      if (aArgs.column === undefined) {
+        var originalLine = mapping.originalLine;
+
+        // Iterate until either we run out of mappings, or we run into
+        // a mapping for a different line than the one we found. Since
+        // mappings are sorted, this is guaranteed to find all mappings for
+        // the line we found.
+        while (mapping && mapping.originalLine === originalLine) {
+          mappings.push({
+            line: util.getArg(mapping, 'generatedLine', null),
+            column: util.getArg(mapping, 'generatedColumn', null),
+            lastColumn: util.getArg(mapping, 'lastGeneratedColumn', null)
+          });
+
+          mapping = this._originalMappings[++index];
+        }
+      } else {
+        var originalColumn = mapping.originalColumn;
+
+        // Iterate until either we run out of mappings, or we run into
+        // a mapping for a different line than the one we were searching for.
+        // Since mappings are sorted, this is guaranteed to find all mappings for
+        // the line we are searching for.
+        while (mapping &&
+               mapping.originalLine === line &&
+               mapping.originalColumn == originalColumn) {
+          mappings.push({
+            line: util.getArg(mapping, 'generatedLine', null),
+            column: util.getArg(mapping, 'generatedColumn', null),
+            lastColumn: util.getArg(mapping, 'lastGeneratedColumn', null)
+          });
+
+          mapping = this._originalMappings[++index];
+        }
+      }
+    }
+
+    return mappings;
+  };
+
+exports.SourceMapConsumer = SourceMapConsumer;
+
+/**
+ * A BasicSourceMapConsumer instance represents a parsed source map which we can
+ * query for information about the original file positions by giving it a file
+ * position in the generated source.
+ *
+ * The only parameter is the raw source map (either as a JSON string, or
+ * already parsed to an object). According to the spec, source maps have the
+ * following attributes:
+ *
+ *   - version: Which version of the source map spec this map is following.
+ *   - sources: An array of URLs to the original source files.
+ *   - names: An array of identifiers which can be referrenced by individual mappings.
+ *   - sourceRoot: Optional. The URL root from which all sources are relative.
+ *   - sourcesContent: Optional. An array of contents of the original source files.
+ *   - mappings: A string of base64 VLQs which contain the actual mappings.
+ *   - file: Optional. The generated file this source map is associated with.
+ *
+ * Here is an example source map, taken from the source map spec[0]:
+ *
+ *     {
+ *       version : 3,
+ *       file: "out.js",
+ *       sourceRoot : "",
+ *       sources: ["foo.js", "bar.js"],
+ *       names: ["src", "maps", "are", "fun"],
+ *       mappings: "AA,AB;;ABCDE;"
+ *     }
+ *
+ * [0]: https://docs.google.com/document/d/1U1RGAehQwRypUTovF1KRlpiOFze0b-_2gc6fAH0KY0k/edit?pli=1#
+ */
+function BasicSourceMapConsumer(aSourceMap) {
+  var sourceMap = aSourceMap;
+  if (typeof aSourceMap === 'string') {
+    sourceMap = JSON.parse(aSourceMap.replace(/^\)\]\}'/, ''));
+  }
+
+  var version = util.getArg(sourceMap, 'version');
+  var sources = util.getArg(sourceMap, 'sources');
+  // Sass 3.3 leaves out the 'names' array, so we deviate from the spec (which
+  // requires the array) to play nice here.
+  var names = util.getArg(sourceMap, 'names', []);
+  var sourceRoot = util.getArg(sourceMap, 'sourceRoot', null);
+  var sourcesContent = util.getArg(sourceMap, 'sourcesContent', null);
+  var mappings = util.getArg(sourceMap, 'mappings');
+  var file = util.getArg(sourceMap, 'file', null);
+
+  // Once again, Sass deviates from the spec and supplies the version as a
+  // string rather than a number, so we use loose equality checking here.
+  if (version != this._version) {
+    throw new Error('Unsupported version: ' + version);
+  }
+
+  sources = sources
+    .map(String)
+    // Some source maps produce relative source paths like "./foo.js" instead of
+    // "foo.js".  Normalize these first so that future comparisons will succeed.
+    // See bugzil.la/1090768.
+    .map(util.normalize)
+    // Always ensure that absolute sources are internally stored relative to
+    // the source root, if the source root is absolute. Not doing this would
+    // be particularly problematic when the source root is a prefix of the
+    // source (valid, but why??). See github issue #199 and bugzil.la/1188982.
+    .map(function (source) {
+      return sourceRoot && util.isAbsolute(sourceRoot) && util.isAbsolute(source)
+        ? util.relative(sourceRoot, source)
+        : source;
+    });
+
+  // Pass `true` below to allow duplicate names and sources. While source maps
+  // are intended to be compressed and deduplicated, the TypeScript compiler
+  // sometimes generates source maps with duplicates in them. See Github issue
+  // #72 and bugzil.la/889492.
+  this._names = ArraySet.fromArray(names.map(String), true);
+  this._sources = ArraySet.fromArray(sources, true);
+
+  this.sourceRoot = sourceRoot;
+  this.sourcesContent = sourcesContent;
+  this._mappings = mappings;
+  this.file = file;
+}
+
+BasicSourceMapConsumer.prototype = Object.create(SourceMapConsumer.prototype);
+BasicSourceMapConsumer.prototype.consumer = SourceMapConsumer;
+
+/**
+ * Create a BasicSourceMapConsumer from a SourceMapGenerator.
+ *
+ * @param SourceMapGenerator aSourceMap
+ *        The source map that will be consumed.
+ * @returns BasicSourceMapConsumer
+ */
+BasicSourceMapConsumer.fromSourceMap =
+  function SourceMapConsumer_fromSourceMap(aSourceMap) {
+    var smc = Object.create(BasicSourceMapConsumer.prototype);
+
+    var names = smc._names = ArraySet.fromArray(aSourceMap._names.toArray(), true);
+    var sources = smc._sources = ArraySet.fromArray(aSourceMap._sources.toArray(), true);
+    smc.sourceRoot = aSourceMap._sourceRoot;
+    smc.sourcesContent = aSourceMap._generateSourcesContent(smc._sources.toArray(),
+                                                            smc.sourceRoot);
+    smc.file = aSourceMap._file;
+
+    // Because we are modifying the entries (by converting string sources and
+    // names to indices into the sources and names ArraySets), we have to make
+    // a copy of the entry or else bad things happen. Shared mutable state
+    // strikes again! See github issue #191.
+
+    var generatedMappings = aSourceMap._mappings.toArray().slice();
+    var destGeneratedMappings = smc.__generatedMappings = [];
+    var destOriginalMappings = smc.__originalMappings = [];
+
+    for (var i = 0, length = generatedMappings.length; i < length; i++) {
+      var srcMapping = generatedMappings[i];
+      var destMapping = new Mapping;
+      destMapping.generatedLine = srcMapping.generatedLine;
+      destMapping.generatedColumn = srcMapping.generatedColumn;
+
+      if (srcMapping.source) {
+        destMapping.source = sources.indexOf(srcMapping.source);
+        destMapping.originalLine = srcMapping.originalLine;
+        destMapping.originalColumn = srcMapping.originalColumn;
+
+        if (srcMapping.name) {
+          destMapping.name = names.indexOf(srcMapping.name);
+        }
+
+        destOriginalMappings.push(destMapping);
+      }
+
+      destGeneratedMappings.push(destMapping);
+    }
+
+    quickSort(smc.__originalMappings, util.compareByOriginalPositions);
+
+    return smc;
+  };
+
+/**
+ * The version of the source mapping spec that we are consuming.
+ */
+BasicSourceMapConsumer.prototype._version = 3;
+
+/**
+ * The list of original sources.
+ */
+Object.defineProperty(BasicSourceMapConsumer.prototype, 'sources', {
+  get: function () {
+    return this._sources.toArray().map(function (s) {
+      return this.sourceRoot != null ? util.join(this.sourceRoot, s) : s;
+    }, this);
+  }
+});
+
+/**
+ * Provide the JIT with a nice shape / hidden class.
+ */
+function Mapping() {
+  this.generatedLine = 0;
+  this.generatedColumn = 0;
+  this.source = null;
+  this.originalLine = null;
+  this.originalColumn = null;
+  this.name = null;
+}
+
+/**
+ * Parse the mappings in a string in to a data structure which we can easily
+ * query (the ordered arrays in the `this.__generatedMappings` and
+ * `this.__originalMappings` properties).
+ */
+BasicSourceMapConsumer.prototype._parseMappings =
+  function SourceMapConsumer_parseMappings(aStr, aSourceRoot) {
+    var generatedLine = 1;
+    var previousGeneratedColumn = 0;
+    var previousOriginalLine = 0;
+    var previousOriginalColumn = 0;
+    var previousSource = 0;
+    var previousName = 0;
+    var length = aStr.length;
+    var index = 0;
+    var cachedSegments = {};
+    var temp = {};
+    var originalMappings = [];
+    var generatedMappings = [];
+    var mapping, str, segment, end, value;
+
+    while (index < length) {
+      if (aStr.charAt(index) === ';') {
+        generatedLine++;
+        index++;
+        previousGeneratedColumn = 0;
+      }
+      else if (aStr.charAt(index) === ',') {
+        index++;
+      }
+      else {
+        mapping = new Mapping();
+        mapping.generatedLine = generatedLine;
+
+        // Because each offset is encoded relative to the previous one,
+        // many segments often have the same encoding. We can exploit this
+        // fact by caching the parsed variable length fields of each segment,
+        // allowing us to avoid a second parse if we encounter the same
+        // segment again.
+        for (end = index; end < length; end++) {
+          if (this._charIsMappingSeparator(aStr, end)) {
+            break;
+          }
+        }
+        str = aStr.slice(index, end);
+
+        segment = cachedSegments[str];
+        if (segment) {
+          index += str.length;
+        } else {
+          segment = [];
+          while (index < end) {
+            base64VLQ.decode(aStr, index, temp);
+            value = temp.value;
+            index = temp.rest;
+            segment.push(value);
+          }
+
+          if (segment.length === 2) {
+            throw new Error('Found a source, but no line and column');
+          }
+
+          if (segment.length === 3) {
+            throw new Error('Found a source and line, but no column');
+          }
+
+          cachedSegments[str] = segment;
+        }
+
+        // Generated column.
+        mapping.generatedColumn = previousGeneratedColumn + segment[0];
+        previousGeneratedColumn = mapping.generatedColumn;
+
+        if (segment.length > 1) {
+          // Original source.
+          mapping.source = previousSource + segment[1];
+          previousSource += segment[1];
+
+          // Original line.
+          mapping.originalLine = previousOriginalLine + segment[2];
+          previousOriginalLine = mapping.originalLine;
+          // Lines are stored 0-based
+          mapping.originalLine += 1;
+
+          // Original column.
+          mapping.originalColumn = previousOriginalColumn + segment[3];
+          previousOriginalColumn = mapping.originalColumn;
+
+          if (segment.length > 4) {
+            // Original name.
+            mapping.name = previousName + segment[4];
+            previousName += segment[4];
+          }
+        }
+
+        generatedMappings.push(mapping);
+        if (typeof mapping.originalLine === 'number') {
+          originalMappings.push(mapping);
+        }
+      }
+    }
+
+    quickSort(generatedMappings, util.compareByGeneratedPositionsDeflated);
+    this.__generatedMappings = generatedMappings;
+
+    quickSort(originalMappings, util.compareByOriginalPositions);
+    this.__originalMappings = originalMappings;
+  };
+
+/**
+ * Find the mapping that best matches the hypothetical "needle" mapping that
+ * we are searching for in the given "haystack" of mappings.
+ */
+BasicSourceMapConsumer.prototype._findMapping =
+  function SourceMapConsumer_findMapping(aNeedle, aMappings, aLineName,
+                                         aColumnName, aComparator, aBias) {
+    // To return the position we are searching for, we must first find the
+    // mapping for the given position and then return the opposite position it
+    // points to. Because the mappings are sorted, we can use binary search to
+    // find the best mapping.
+
+    if (aNeedle[aLineName] <= 0) {
+      throw new TypeError('Line must be greater than or equal to 1, got '
+                          + aNeedle[aLineName]);
+    }
+    if (aNeedle[aColumnName] < 0) {
+      throw new TypeError('Column must be greater than or equal to 0, got '
+                          + aNeedle[aColumnName]);
+    }
+
+    return binarySearch.search(aNeedle, aMappings, aComparator, aBias);
+  };
+
+/**
+ * Compute the last column for each generated mapping. The last column is
+ * inclusive.
+ */
+BasicSourceMapConsumer.prototype.computeColumnSpans =
+  function SourceMapConsumer_computeColumnSpans() {
+    for (var index = 0; index < this._generatedMappings.length; ++index) {
+      var mapping = this._generatedMappings[index];
+
+      // Mappings do not contain a field for the last generated columnt. We
+      // can come up with an optimistic estimate, however, by assuming that
+      // mappings are contiguous (i.e. given two consecutive mappings, the
+      // first mapping ends where the second one starts).
+      if (index + 1 < this._generatedMappings.length) {
+        var nextMapping = this._generatedMappings[index + 1];
+
+        if (mapping.generatedLine === nextMapping.generatedLine) {
+          mapping.lastGeneratedColumn = nextMapping.generatedColumn - 1;
+          continue;
+        }
+      }
+
+      // The last mapping for each line spans the entire line.
+      mapping.lastGeneratedColumn = Infinity;
+    }
+  };
+
+/**
+ * Returns the original source, line, and column information for the generated
+ * source's line and column positions provided. The only argument is an object
+ * with the following properties:
+ *
+ *   - line: The line number in the generated source.
+ *   - column: The column number in the generated source.
+ *   - bias: Either 'SourceMapConsumer.GREATEST_LOWER_BOUND' or
+ *     'SourceMapConsumer.LEAST_UPPER_BOUND'. Specifies whether to return the
+ *     closest element that is smaller than or greater than the one we are
+ *     searching for, respectively, if the exact element cannot be found.
+ *     Defaults to 'SourceMapConsumer.GREATEST_LOWER_BOUND'.
+ *
+ * and an object is returned with the following properties:
+ *
+ *   - source: The original source file, or null.
+ *   - line: The line number in the original source, or null.
+ *   - column: The column number in the original source, or null.
+ *   - name: The original identifier, or null.
+ */
+BasicSourceMapConsumer.prototype.originalPositionFor =
+  function SourceMapConsumer_originalPositionFor(aArgs) {
+    var needle = {
+      generatedLine: util.getArg(aArgs, 'line'),
+      generatedColumn: util.getArg(aArgs, 'column')
+    };
+
+    var index = this._findMapping(
+      needle,
+      this._generatedMappings,
+      "generatedLine",
+      "generatedColumn",
+      util.compareByGeneratedPositionsDeflated,
+      util.getArg(aArgs, 'bias', SourceMapConsumer.GREATEST_LOWER_BOUND)
+    );
+
+    if (index >= 0) {
+      var mapping = this._generatedMappings[index];
+
+      if (mapping.generatedLine === needle.generatedLine) {
+        var source = util.getArg(mapping, 'source', null);
+        if (source !== null) {
+          source = this._sources.at(source);
+          if (this.sourceRoot != null) {
+            source = util.join(this.sourceRoot, source);
+          }
+        }
+        var name = util.getArg(mapping, 'name', null);
+        if (name !== null) {
+          name = this._names.at(name);
+        }
+        return {
+          source: source,
+          line: util.getArg(mapping, 'originalLine', null),
+          column: util.getArg(mapping, 'originalColumn', null),
+          name: name
+        };
+      }
+    }
+
+    return {
+      source: null,
+      line: null,
+      column: null,
+      name: null
+    };
+  };
+
+/**
+ * Return true if we have the source content for every source in the source
+ * map, false otherwise.
+ */
+BasicSourceMapConsumer.prototype.hasContentsOfAllSources =
+  function BasicSourceMapConsumer_hasContentsOfAllSources() {
+    if (!this.sourcesContent) {
+      return false;
+    }
+    return this.sourcesContent.length >= this._sources.size() &&
+      !this.sourcesContent.some(function (sc) { return sc == null; });
+  };
+
+/**
+ * Returns the original source content. The only argument is the url of the
+ * original source file. Returns null if no original source content is
+ * available.
+ */
+BasicSourceMapConsumer.prototype.sourceContentFor =
+  function SourceMapConsumer_sourceContentFor(aSource, nullOnMissing) {
+    if (!this.sourcesContent) {
+      return null;
+    }
+
+    if (this.sourceRoot != null) {
+      aSource = util.relative(this.sourceRoot, aSource);
+    }
+
+    if (this._sources.has(aSource)) {
+      return this.sourcesContent[this._sources.indexOf(aSource)];
+    }
+
+    var url;
+    if (this.sourceRoot != null
+        && (url = util.urlParse(this.sourceRoot))) {
+      // XXX: file:// URIs and absolute paths lead to unexpected behavior for
+      // many users. We can help them out when they expect file:// URIs to
+      // behave like it would if they were running a local HTTP server. See
+      // https://bugzilla.mozilla.org/show_bug.cgi?id=885597.
+      var fileUriAbsPath = aSource.replace(/^file:\/\//, "");
+      if (url.scheme == "file"
+          && this._sources.has(fileUriAbsPath)) {
+        return this.sourcesContent[this._sources.indexOf(fileUriAbsPath)]
+      }
+
+      if ((!url.path || url.path == "/")
+          && this._sources.has("/" + aSource)) {
+        return this.sourcesContent[this._sources.indexOf("/" + aSource)];
+      }
+    }
+
+    // This function is used recursively from
+    // IndexedSourceMapConsumer.prototype.sourceContentFor. In that case, we
+    // don't want to throw if we can't find the source - we just want to
+    // return null, so we provide a flag to exit gracefully.
+    if (nullOnMissing) {
+      return null;
+    }
+    else {
+      throw new Error('"' + aSource + '" is not in the SourceMap.');
+    }
+  };
+
+/**
+ * Returns the generated line and column information for the original source,
+ * line, and column positions provided. The only argument is an object with
+ * the following properties:
+ *
+ *   - source: The filename of the original source.
+ *   - line: The line number in the original source.
+ *   - column: The column number in the original source.
+ *   - bias: Either 'SourceMapConsumer.GREATEST_LOWER_BOUND' or
+ *     'SourceMapConsumer.LEAST_UPPER_BOUND'. Specifies whether to return the
+ *     closest element that is smaller than or greater than the one we are
+ *     searching for, respectively, if the exact element cannot be found.
+ *     Defaults to 'SourceMapConsumer.GREATEST_LOWER_BOUND'.
+ *
+ * and an object is returned with the following properties:
+ *
+ *   - line: The line number in the generated source, or null.
+ *   - column: The column number in the generated source, or null.
+ */
+BasicSourceMapConsumer.prototype.generatedPositionFor =
+  function SourceMapConsumer_generatedPositionFor(aArgs) {
+    var source = util.getArg(aArgs, 'source');
+    if (this.sourceRoot != null) {
+      source = util.relative(this.sourceRoot, source);
+    }
+    if (!this._sources.has(source)) {
+      return {
+        line: null,
+        column: null,
+        lastColumn: null
+      };
+    }
+    source = this._sources.indexOf(source);
+
+    var needle = {
+      source: source,
+      originalLine: util.getArg(aArgs, 'line'),
+      originalColumn: util.getArg(aArgs, 'column')
+    };
+
+    var index = this._findMapping(
+      needle,
+      this._originalMappings,
+      "originalLine",
+      "originalColumn",
+      util.compareByOriginalPositions,
+      util.getArg(aArgs, 'bias', SourceMapConsumer.GREATEST_LOWER_BOUND)
+    );
+
+    if (index >= 0) {
+      var mapping = this._originalMappings[index];
+
+      if (mapping.source === needle.source) {
+        return {
+          line: util.getArg(mapping, 'generatedLine', null),
+          column: util.getArg(mapping, 'generatedColumn', null),
+          lastColumn: util.getArg(mapping, 'lastGeneratedColumn', null)
+        };
+      }
+    }
+
+    return {
+      line: null,
+      column: null,
+      lastColumn: null
+    };
+  };
+
+exports.BasicSourceMapConsumer = BasicSourceMapConsumer;
+
+/**
+ * An IndexedSourceMapConsumer instance represents a parsed source map which
+ * we can query for information. It differs from BasicSourceMapConsumer in
+ * that it takes "indexed" source maps (i.e. ones with a "sections" field) as
+ * input.
+ *
+ * The only parameter is a raw source map (either as a JSON string, or already
+ * parsed to an object). According to the spec for indexed source maps, they
+ * have the following attributes:
+ *
+ *   - version: Which version of the source map spec this map is following.
+ *   - file: Optional. The generated file this source map is associated with.
+ *   - sections: A list of section definitions.
+ *
+ * Each value under the "sections" field has two fields:
+ *   - offset: The offset into the original specified at which this section
+ *       begins to apply, defined as an object with a "line" and "column"
+ *       field.
+ *   - map: A source map definition. This source map could also be indexed,
+ *       but doesn't have to be.
+ *
+ * Instead of the "map" field, it's also possible to have a "url" field
+ * specifying a URL to retrieve a source map from, but that's currently
+ * unsupported.
+ *
+ * Here's an example source map, taken from the source map spec[0], but
+ * modified to omit a section which uses the "url" field.
+ *
+ *  {
+ *    version : 3,
+ *    file: "app.js",
+ *    sections: [{
+ *      offset: {line:100, column:10},
+ *      map: {
+ *        version : 3,
+ *        file: "section.js",
+ *        sources: ["foo.js", "bar.js"],
+ *        names: ["src", "maps", "are", "fun"],
+ *        mappings: "AAAA,E;;ABCDE;"
+ *      }
+ *    }],
+ *  }
+ *
+ * [0]: https://docs.google.com/document/d/1U1RGAehQwRypUTovF1KRlpiOFze0b-_2gc6fAH0KY0k/edit#heading=h.535es3xeprgt
+ */
+function IndexedSourceMapConsumer(aSourceMap) {
+  var sourceMap = aSourceMap;
+  if (typeof aSourceMap === 'string') {
+    sourceMap = JSON.parse(aSourceMap.replace(/^\)\]\}'/, ''));
+  }
+
+  var version = util.getArg(sourceMap, 'version');
+  var sections = util.getArg(sourceMap, 'sections');
+
+  if (version != this._version) {
+    throw new Error('Unsupported version: ' + version);
+  }
+
+  this._sources = new ArraySet();
+  this._names = new ArraySet();
+
+  var lastOffset = {
+    line: -1,
+    column: 0
+  };
+  this._sections = sections.map(function (s) {
+    if (s.url) {
+      // The url field will require support for asynchronicity.
+      // See https://github.com/mozilla/source-map/issues/16
+      throw new Error('Support for url field in sections not implemented.');
+    }
+    var offset = util.getArg(s, 'offset');
+    var offsetLine = util.getArg(offset, 'line');
+    var offsetColumn = util.getArg(offset, 'column');
+
+    if (offsetLine < lastOffset.line ||
+        (offsetLine === lastOffset.line && offsetColumn < lastOffset.column)) {
+      throw new Error('Section offsets must be ordered and non-overlapping.');
+    }
+    lastOffset = offset;
+
+    return {
+      generatedOffset: {
+        // The offset fields are 0-based, but we use 1-based indices when
+        // encoding/decoding from VLQ.
+        generatedLine: offsetLine + 1,
+        generatedColumn: offsetColumn + 1
+      },
+      consumer: new SourceMapConsumer(util.getArg(s, 'map'))
+    }
+  });
+}
+
+IndexedSourceMapConsumer.prototype = Object.create(SourceMapConsumer.prototype);
+IndexedSourceMapConsumer.prototype.constructor = SourceMapConsumer;
+
+/**
+ * The version of the source mapping spec that we are consuming.
+ */
+IndexedSourceMapConsumer.prototype._version = 3;
+
+/**
+ * The list of original sources.
+ */
+Object.defineProperty(IndexedSourceMapConsumer.prototype, 'sources', {
+  get: function () {
+    var sources = [];
+    for (var i = 0; i < this._sections.length; i++) {
+      for (var j = 0; j < this._sections[i].consumer.sources.length; j++) {
+        sources.push(this._sections[i].consumer.sources[j]);
+      }
+    }
+    return sources;
+  }
+});
+
+/**
+ * Returns the original source, line, and column information for the generated
+ * source's line and column positions provided. The only argument is an object
+ * with the following properties:
+ *
+ *   - line: The line number in the generated source.
+ *   - column: The column number in the generated source.
+ *
+ * and an object is returned with the following properties:
+ *
+ *   - source: The original source file, or null.
+ *   - line: The line number in the original source, or null.
+ *   - column: The column number in the original source, or null.
+ *   - name: The original identifier, or null.
+ */
+IndexedSourceMapConsumer.prototype.originalPositionFor =
+  function IndexedSourceMapConsumer_originalPositionFor(aArgs) {
+    var needle = {
+      generatedLine: util.getArg(aArgs, 'line'),
+      generatedColumn: util.getArg(aArgs, 'column')
+    };
+
+    // Find the section containing the generated position we're trying to map
+    // to an original position.
+    var sectionIndex = binarySearch.search(needle, this._sections,
+      function(needle, section) {
+        var cmp = needle.generatedLine - section.generatedOffset.generatedLine;
+        if (cmp) {
+          return cmp;
+        }
+
+        return (needle.generatedColumn -
+                section.generatedOffset.generatedColumn);
+      });
+    var section = this._sections[sectionIndex];
+
+    if (!section) {
+      return {
+        source: null,
+        line: null,
+        column: null,
+        name: null
+      };
+    }
+
+    return section.consumer.originalPositionFor({
+      line: needle.generatedLine -
+        (section.generatedOffset.generatedLine - 1),
+      column: needle.generatedColumn -
+        (section.generatedOffset.generatedLine === needle.generatedLine
+         ? section.generatedOffset.generatedColumn - 1
+         : 0),
+      bias: aArgs.bias
+    });
+  };
+
+/**
+ * Return true if we have the source content for every source in the source
+ * map, false otherwise.
+ */
+IndexedSourceMapConsumer.prototype.hasContentsOfAllSources =
+  function IndexedSourceMapConsumer_hasContentsOfAllSources() {
+    return this._sections.every(function (s) {
+      return s.consumer.hasContentsOfAllSources();
+    });
+  };
+
+/**
+ * Returns the original source content. The only argument is the url of the
+ * original source file. Returns null if no original source content is
+ * available.
+ */
+IndexedSourceMapConsumer.prototype.sourceContentFor =
+  function IndexedSourceMapConsumer_sourceContentFor(aSource, nullOnMissing) {
+    for (var i = 0; i < this._sections.length; i++) {
+      var section = this._sections[i];
+
+      var content = section.consumer.sourceContentFor(aSource, true);
+      if (content) {
+        return content;
+      }
+    }
+    if (nullOnMissing) {
+      return null;
+    }
+    else {
+      throw new Error('"' + aSource + '" is not in the SourceMap.');
+    }
+  };
+
+/**
+ * Returns the generated line and column information for the original source,
+ * line, and column positions provided. The only argument is an object with
+ * the following properties:
+ *
+ *   - source: The filename of the original source.
+ *   - line: The line number in the original source.
+ *   - column: The column number in the original source.
+ *
+ * and an object is returned with the following properties:
+ *
+ *   - line: The line number in the generated source, or null.
+ *   - column: The column number in the generated source, or null.
+ */
+IndexedSourceMapConsumer.prototype.generatedPositionFor =
+  function IndexedSourceMapConsumer_generatedPositionFor(aArgs) {
+    for (var i = 0; i < this._sections.length; i++) {
+      var section = this._sections[i];
+
+      // Only consider this section if the requested source is in the list of
+      // sources of the consumer.
+      if (section.consumer.sources.indexOf(util.getArg(aArgs, 'source')) === -1) {
+        continue;
+      }
+      var generatedPosition = section.consumer.generatedPositionFor(aArgs);
+      if (generatedPosition) {
+        var ret = {
+          line: generatedPosition.line +
+            (section.generatedOffset.generatedLine - 1),
+          column: generatedPosition.column +
+            (section.generatedOffset.generatedLine === generatedPosition.line
+             ? section.generatedOffset.generatedColumn - 1
+             : 0)
+        };
+        return ret;
+      }
+    }
+
+    return {
+      line: null,
+      column: null
+    };
+  };
+
+/**
+ * Parse the mappings in a string in to a data structure which we can easily
+ * query (the ordered arrays in the `this.__generatedMappings` and
+ * `this.__originalMappings` properties).
+ */
+IndexedSourceMapConsumer.prototype._parseMappings =
+  function IndexedSourceMapConsumer_parseMappings(aStr, aSourceRoot) {
+    this.__generatedMappings = [];
+    this.__originalMappings = [];
+    for (var i = 0; i < this._sections.length; i++) {
+      var section = this._sections[i];
+      var sectionMappings = section.consumer._generatedMappings;
+      for (var j = 0; j < sectionMappings.length; j++) {
+        var mapping = sectionMappings[j];
+
+        var source = section.consumer._sources.at(mapping.source);
+        if (section.consumer.sourceRoot !== null) {
+          source = util.join(section.consumer.sourceRoot, source);
+        }
+        this._sources.add(source);
+        source = this._sources.indexOf(source);
+
+        var name = section.consumer._names.at(mapping.name);
+        this._names.add(name);
+        name = this._names.indexOf(name);
+
+        // The mappings coming from the consumer for the section have
+        // generated positions relative to the start of the section, so we
+        // need to offset them to be relative to the start of the concatenated
+        // generated file.
+        var adjustedMapping = {
+          source: source,
+          generatedLine: mapping.generatedLine +
+            (section.generatedOffset.generatedLine - 1),
+          generatedColumn: mapping.generatedColumn +
+            (section.generatedOffset.generatedLine === mapping.generatedLine
+            ? section.generatedOffset.generatedColumn - 1
+            : 0),
+          originalLine: mapping.originalLine,
+          originalColumn: mapping.originalColumn,
+          name: name
+        };
+
+        this.__generatedMappings.push(adjustedMapping);
+        if (typeof adjustedMapping.originalLine === 'number') {
+          this.__originalMappings.push(adjustedMapping);
+        }
+      }
+    }
+
+    quickSort(this.__generatedMappings, util.compareByGeneratedPositionsDeflated);
+    quickSort(this.__originalMappings, util.compareByOriginalPositions);
+  };
+
+exports.IndexedSourceMapConsumer = IndexedSourceMapConsumer;
+
+
+/***/ }),
+/* 113 */
+/*!******************************************************!*\
+  !*** ./node_modules/source-map/lib/binary-search.js ***!
+  \******************************************************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+exports.GREATEST_LOWER_BOUND = 1;
+exports.LEAST_UPPER_BOUND = 2;
+
+/**
+ * Recursive implementation of binary search.
+ *
+ * @param aLow Indices here and lower do not contain the needle.
+ * @param aHigh Indices here and higher do not contain the needle.
+ * @param aNeedle The element being searched for.
+ * @param aHaystack The non-empty array being searched.
+ * @param aCompare Function which takes two elements and returns -1, 0, or 1.
+ * @param aBias Either 'binarySearch.GREATEST_LOWER_BOUND' or
+ *     'binarySearch.LEAST_UPPER_BOUND'. Specifies whether to return the
+ *     closest element that is smaller than or greater than the one we are
+ *     searching for, respectively, if the exact element cannot be found.
+ */
+function recursiveSearch(aLow, aHigh, aNeedle, aHaystack, aCompare, aBias) {
+  // This function terminates when one of the following is true:
+  //
+  //   1. We find the exact element we are looking for.
+  //
+  //   2. We did not find the exact element, but we can return the index of
+  //      the next-closest element.
+  //
+  //   3. We did not find the exact element, and there is no next-closest
+  //      element than the one we are searching for, so we return -1.
+  var mid = Math.floor((aHigh - aLow) / 2) + aLow;
+  var cmp = aCompare(aNeedle, aHaystack[mid], true);
+  if (cmp === 0) {
+    // Found the element we are looking for.
+    return mid;
+  }
+  else if (cmp > 0) {
+    // Our needle is greater than aHaystack[mid].
+    if (aHigh - mid > 1) {
+      // The element is in the upper half.
+      return recursiveSearch(mid, aHigh, aNeedle, aHaystack, aCompare, aBias);
+    }
+
+    // The exact needle element was not found in this haystack. Determine if
+    // we are in termination case (3) or (2) and return the appropriate thing.
+    if (aBias == exports.LEAST_UPPER_BOUND) {
+      return aHigh < aHaystack.length ? aHigh : -1;
+    } else {
+      return mid;
+    }
+  }
+  else {
+    // Our needle is less than aHaystack[mid].
+    if (mid - aLow > 1) {
+      // The element is in the lower half.
+      return recursiveSearch(aLow, mid, aNeedle, aHaystack, aCompare, aBias);
+    }
+
+    // we are in termination case (3) or (2) and return the appropriate thing.
+    if (aBias == exports.LEAST_UPPER_BOUND) {
+      return mid;
+    } else {
+      return aLow < 0 ? -1 : aLow;
+    }
+  }
+}
+
+/**
+ * This is an implementation of binary search which will always try and return
+ * the index of the closest element if there is no exact hit. This is because
+ * mappings between original and generated line/col pairs are single points,
+ * and there is an implicit region between each of them, so a miss just means
+ * that you aren't on the very start of a region.
+ *
+ * @param aNeedle The element you are looking for.
+ * @param aHaystack The array that is being searched.
+ * @param aCompare A function which takes the needle and an element in the
+ *     array and returns -1, 0, or 1 depending on whether the needle is less
+ *     than, equal to, or greater than the element, respectively.
+ * @param aBias Either 'binarySearch.GREATEST_LOWER_BOUND' or
+ *     'binarySearch.LEAST_UPPER_BOUND'. Specifies whether to return the
+ *     closest element that is smaller than or greater than the one we are
+ *     searching for, respectively, if the exact element cannot be found.
+ *     Defaults to 'binarySearch.GREATEST_LOWER_BOUND'.
+ */
+exports.search = function search(aNeedle, aHaystack, aCompare, aBias) {
+  if (aHaystack.length === 0) {
+    return -1;
+  }
+
+  var index = recursiveSearch(-1, aHaystack.length, aNeedle, aHaystack,
+                              aCompare, aBias || exports.GREATEST_LOWER_BOUND);
+  if (index < 0) {
+    return -1;
+  }
+
+  // We have found either the exact element, or the next-closest element than
+  // the one we are searching for. However, there may be more than one such
+  // element. Make sure we always return the smallest of these.
+  while (index - 1 >= 0) {
+    if (aCompare(aHaystack[index], aHaystack[index - 1], true) !== 0) {
+      break;
+    }
+    --index;
+  }
+
+  return index;
+};
+
+
+/***/ }),
+/* 114 */
+/*!***************************************************!*\
+  !*** ./node_modules/source-map/lib/quick-sort.js ***!
+  \***************************************************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+// It turns out that some (most?) JavaScript engines don't self-host
+// `Array.prototype.sort`. This makes sense because C++ will likely remain
+// faster than JS when doing raw CPU-intensive sorting. However, when using a
+// custom comparator function, calling back and forth between the VM's C++ and
+// JIT'd JS is rather slow *and* loses JIT type information, resulting in
+// worse generated code for the comparator function than would be optimal. In
+// fact, when sorting with a comparator, these costs outweigh the benefits of
+// sorting in C++. By using our own JS-implemented Quick Sort (below), we get
+// a ~3500ms mean speed-up in `bench/bench.html`.
+
+/**
+ * Swap the elements indexed by `x` and `y` in the array `ary`.
+ *
+ * @param {Array} ary
+ *        The array.
+ * @param {Number} x
+ *        The index of the first item.
+ * @param {Number} y
+ *        The index of the second item.
+ */
+function swap(ary, x, y) {
+  var temp = ary[x];
+  ary[x] = ary[y];
+  ary[y] = temp;
+}
+
+/**
+ * Returns a random integer within the range `low .. high` inclusive.
+ *
+ * @param {Number} low
+ *        The lower bound on the range.
+ * @param {Number} high
+ *        The upper bound on the range.
+ */
+function randomIntInRange(low, high) {
+  return Math.round(low + (Math.random() * (high - low)));
+}
+
+/**
+ * The Quick Sort algorithm.
+ *
+ * @param {Array} ary
+ *        An array to sort.
+ * @param {function} comparator
+ *        Function to use to compare two items.
+ * @param {Number} p
+ *        Start index of the array
+ * @param {Number} r
+ *        End index of the array
+ */
+function doQuickSort(ary, comparator, p, r) {
+  // If our lower bound is less than our upper bound, we (1) partition the
+  // array into two pieces and (2) recurse on each half. If it is not, this is
+  // the empty array and our base case.
+
+  if (p < r) {
+    // (1) Partitioning.
+    //
+    // The partitioning chooses a pivot between `p` and `r` and moves all
+    // elements that are less than or equal to the pivot to the before it, and
+    // all the elements that are greater than it after it. The effect is that
+    // once partition is done, the pivot is in the exact place it will be when
+    // the array is put in sorted order, and it will not need to be moved
+    // again. This runs in O(n) time.
+
+    // Always choose a random pivot so that an input array which is reverse
+    // sorted does not cause O(n^2) running time.
+    var pivotIndex = randomIntInRange(p, r);
+    var i = p - 1;
+
+    swap(ary, pivotIndex, r);
+    var pivot = ary[r];
+
+    // Immediately after `j` is incremented in this loop, the following hold
+    // true:
+    //
+    //   * Every element in `ary[p .. i]` is less than or equal to the pivot.
+    //
+    //   * Every element in `ary[i+1 .. j-1]` is greater than the pivot.
+    for (var j = p; j < r; j++) {
+      if (comparator(ary[j], pivot) <= 0) {
+        i += 1;
+        swap(ary, i, j);
+      }
+    }
+
+    swap(ary, i + 1, j);
+    var q = i + 1;
+
+    // (2) Recurse on each half.
+
+    doQuickSort(ary, comparator, p, q - 1);
+    doQuickSort(ary, comparator, q + 1, r);
+  }
+}
+
+/**
+ * Sort the given array in-place with the given comparator function.
+ *
+ * @param {Array} ary
+ *        An array to sort.
+ * @param {function} comparator
+ *        Function to use to compare two items.
+ */
+exports.quickSort = function (ary, comparator) {
+  doQuickSort(ary, comparator, 0, ary.length - 1);
+};
+
+
+/***/ }),
+/* 115 */
+/*!****************************************************!*\
+  !*** ./node_modules/source-map/lib/source-node.js ***!
+  \****************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var SourceMapGenerator = __webpack_require__(/*! ./source-map-generator */ 106).SourceMapGenerator;
+var util = __webpack_require__(/*! ./util */ 109);
+
+// Matches a Windows-style `\r\n` newline or a `\n` newline used by all other
+// operating systems these days (capturing the result).
+var REGEX_NEWLINE = /(\r?\n)/;
+
+// Newline character code for charCodeAt() comparisons
+var NEWLINE_CODE = 10;
+
+// Private symbol for identifying `SourceNode`s when multiple versions of
+// the source-map library are loaded. This MUST NOT CHANGE across
+// versions!
+var isSourceNode = "$$$isSourceNode$$$";
+
+/**
+ * SourceNodes provide a way to abstract over interpolating/concatenating
+ * snippets of generated JavaScript source code while maintaining the line and
+ * column information associated with the original source code.
+ *
+ * @param aLine The original line number.
+ * @param aColumn The original column number.
+ * @param aSource The original source's filename.
+ * @param aChunks Optional. An array of strings which are snippets of
+ *        generated JS, or other SourceNodes.
+ * @param aName The original identifier.
+ */
+function SourceNode(aLine, aColumn, aSource, aChunks, aName) {
+  this.children = [];
+  this.sourceContents = {};
+  this.line = aLine == null ? null : aLine;
+  this.column = aColumn == null ? null : aColumn;
+  this.source = aSource == null ? null : aSource;
+  this.name = aName == null ? null : aName;
+  this[isSourceNode] = true;
+  if (aChunks != null) this.add(aChunks);
+}
+
+/**
+ * Creates a SourceNode from generated code and a SourceMapConsumer.
+ *
+ * @param aGeneratedCode The generated code
+ * @param aSourceMapConsumer The SourceMap for the generated code
+ * @param aRelativePath Optional. The path that relative sources in the
+ *        SourceMapConsumer should be relative to.
+ */
+SourceNode.fromStringWithSourceMap =
+  function SourceNode_fromStringWithSourceMap(aGeneratedCode, aSourceMapConsumer, aRelativePath) {
+    // The SourceNode we want to fill with the generated code
+    // and the SourceMap
+    var node = new SourceNode();
+
+    // All even indices of this array are one line of the generated code,
+    // while all odd indices are the newlines between two adjacent lines
+    // (since `REGEX_NEWLINE` captures its match).
+    // Processed fragments are accessed by calling `shiftNextLine`.
+    var remainingLines = aGeneratedCode.split(REGEX_NEWLINE);
+    var remainingLinesIndex = 0;
+    var shiftNextLine = function() {
+      var lineContents = getNextLine();
+      // The last line of a file might not have a newline.
+      var newLine = getNextLine() || "";
+      return lineContents + newLine;
+
+      function getNextLine() {
+        return remainingLinesIndex < remainingLines.length ?
+            remainingLines[remainingLinesIndex++] : undefined;
+      }
+    };
+
+    // We need to remember the position of "remainingLines"
+    var lastGeneratedLine = 1, lastGeneratedColumn = 0;
+
+    // The generate SourceNodes we need a code range.
+    // To extract it current and last mapping is used.
+    // Here we store the last mapping.
+    var lastMapping = null;
+
+    aSourceMapConsumer.eachMapping(function (mapping) {
+      if (lastMapping !== null) {
+        // We add the code from "lastMapping" to "mapping":
+        // First check if there is a new line in between.
+        if (lastGeneratedLine < mapping.generatedLine) {
+          // Associate first line with "lastMapping"
+          addMappingWithCode(lastMapping, shiftNextLine());
+          lastGeneratedLine++;
+          lastGeneratedColumn = 0;
+          // The remaining code is added without mapping
+        } else {
+          // There is no new line in between.
+          // Associate the code between "lastGeneratedColumn" and
+          // "mapping.generatedColumn" with "lastMapping"
+          var nextLine = remainingLines[remainingLinesIndex];
+          var code = nextLine.substr(0, mapping.generatedColumn -
+                                        lastGeneratedColumn);
+          remainingLines[remainingLinesIndex] = nextLine.substr(mapping.generatedColumn -
+                                              lastGeneratedColumn);
+          lastGeneratedColumn = mapping.generatedColumn;
+          addMappingWithCode(lastMapping, code);
+          // No more remaining code, continue
+          lastMapping = mapping;
+          return;
+        }
+      }
+      // We add the generated code until the first mapping
+      // to the SourceNode without any mapping.
+      // Each line is added as separate string.
+      while (lastGeneratedLine < mapping.generatedLine) {
+        node.add(shiftNextLine());
+        lastGeneratedLine++;
+      }
+      if (lastGeneratedColumn < mapping.generatedColumn) {
+        var nextLine = remainingLines[remainingLinesIndex];
+        node.add(nextLine.substr(0, mapping.generatedColumn));
+        remainingLines[remainingLinesIndex] = nextLine.substr(mapping.generatedColumn);
+        lastGeneratedColumn = mapping.generatedColumn;
+      }
+      lastMapping = mapping;
+    }, this);
+    // We have processed all mappings.
+    if (remainingLinesIndex < remainingLines.length) {
+      if (lastMapping) {
+        // Associate the remaining code in the current line with "lastMapping"
+        addMappingWithCode(lastMapping, shiftNextLine());
+      }
+      // and add the remaining lines without any mapping
+      node.add(remainingLines.splice(remainingLinesIndex).join(""));
+    }
+
+    // Copy sourcesContent into SourceNode
+    aSourceMapConsumer.sources.forEach(function (sourceFile) {
+      var content = aSourceMapConsumer.sourceContentFor(sourceFile);
+      if (content != null) {
+        if (aRelativePath != null) {
+          sourceFile = util.join(aRelativePath, sourceFile);
+        }
+        node.setSourceContent(sourceFile, content);
+      }
+    });
+
+    return node;
+
+    function addMappingWithCode(mapping, code) {
+      if (mapping === null || mapping.source === undefined) {
+        node.add(code);
+      } else {
+        var source = aRelativePath
+          ? util.join(aRelativePath, mapping.source)
+          : mapping.source;
+        node.add(new SourceNode(mapping.originalLine,
+                                mapping.originalColumn,
+                                source,
+                                code,
+                                mapping.name));
+      }
+    }
+  };
+
+/**
+ * Add a chunk of generated JS to this source node.
+ *
+ * @param aChunk A string snippet of generated JS code, another instance of
+ *        SourceNode, or an array where each member is one of those things.
+ */
+SourceNode.prototype.add = function SourceNode_add(aChunk) {
+  if (Array.isArray(aChunk)) {
+    aChunk.forEach(function (chunk) {
+      this.add(chunk);
+    }, this);
+  }
+  else if (aChunk[isSourceNode] || typeof aChunk === "string") {
+    if (aChunk) {
+      this.children.push(aChunk);
+    }
+  }
+  else {
+    throw new TypeError(
+      "Expected a SourceNode, string, or an array of SourceNodes and strings. Got " + aChunk
+    );
+  }
+  return this;
+};
+
+/**
+ * Add a chunk of generated JS to the beginning of this source node.
+ *
+ * @param aChunk A string snippet of generated JS code, another instance of
+ *        SourceNode, or an array where each member is one of those things.
+ */
+SourceNode.prototype.prepend = function SourceNode_prepend(aChunk) {
+  if (Array.isArray(aChunk)) {
+    for (var i = aChunk.length-1; i >= 0; i--) {
+      this.prepend(aChunk[i]);
+    }
+  }
+  else if (aChunk[isSourceNode] || typeof aChunk === "string") {
+    this.children.unshift(aChunk);
+  }
+  else {
+    throw new TypeError(
+      "Expected a SourceNode, string, or an array of SourceNodes and strings. Got " + aChunk
+    );
+  }
+  return this;
+};
+
+/**
+ * Walk over the tree of JS snippets in this node and its children. The
+ * walking function is called once for each snippet of JS and is passed that
+ * snippet and the its original associated source's line/column location.
+ *
+ * @param aFn The traversal function.
+ */
+SourceNode.prototype.walk = function SourceNode_walk(aFn) {
+  var chunk;
+  for (var i = 0, len = this.children.length; i < len; i++) {
+    chunk = this.children[i];
+    if (chunk[isSourceNode]) {
+      chunk.walk(aFn);
+    }
+    else {
+      if (chunk !== '') {
+        aFn(chunk, { source: this.source,
+                     line: this.line,
+                     column: this.column,
+                     name: this.name });
+      }
+    }
+  }
+};
+
+/**
+ * Like `String.prototype.join` except for SourceNodes. Inserts `aStr` between
+ * each of `this.children`.
+ *
+ * @param aSep The separator.
+ */
+SourceNode.prototype.join = function SourceNode_join(aSep) {
+  var newChildren;
+  var i;
+  var len = this.children.length;
+  if (len > 0) {
+    newChildren = [];
+    for (i = 0; i < len-1; i++) {
+      newChildren.push(this.children[i]);
+      newChildren.push(aSep);
+    }
+    newChildren.push(this.children[i]);
+    this.children = newChildren;
+  }
+  return this;
+};
+
+/**
+ * Call String.prototype.replace on the very right-most source snippet. Useful
+ * for trimming whitespace from the end of a source node, etc.
+ *
+ * @param aPattern The pattern to replace.
+ * @param aReplacement The thing to replace the pattern with.
+ */
+SourceNode.prototype.replaceRight = function SourceNode_replaceRight(aPattern, aReplacement) {
+  var lastChild = this.children[this.children.length - 1];
+  if (lastChild[isSourceNode]) {
+    lastChild.replaceRight(aPattern, aReplacement);
+  }
+  else if (typeof lastChild === 'string') {
+    this.children[this.children.length - 1] = lastChild.replace(aPattern, aReplacement);
+  }
+  else {
+    this.children.push(''.replace(aPattern, aReplacement));
+  }
+  return this;
+};
+
+/**
+ * Set the source content for a source file. This will be added to the SourceMapGenerator
+ * in the sourcesContent field.
+ *
+ * @param aSourceFile The filename of the source file
+ * @param aSourceContent The content of the source file
+ */
+SourceNode.prototype.setSourceContent =
+  function SourceNode_setSourceContent(aSourceFile, aSourceContent) {
+    this.sourceContents[util.toSetString(aSourceFile)] = aSourceContent;
+  };
+
+/**
+ * Walk over the tree of SourceNodes. The walking function is called for each
+ * source file content and is passed the filename and source content.
+ *
+ * @param aFn The traversal function.
+ */
+SourceNode.prototype.walkSourceContents =
+  function SourceNode_walkSourceContents(aFn) {
+    for (var i = 0, len = this.children.length; i < len; i++) {
+      if (this.children[i][isSourceNode]) {
+        this.children[i].walkSourceContents(aFn);
+      }
+    }
+
+    var sources = Object.keys(this.sourceContents);
+    for (var i = 0, len = sources.length; i < len; i++) {
+      aFn(util.fromSetString(sources[i]), this.sourceContents[sources[i]]);
+    }
+  };
+
+/**
+ * Return the string representation of this source node. Walks over the tree
+ * and concatenates all the various snippets together to one string.
+ */
+SourceNode.prototype.toString = function SourceNode_toString() {
+  var str = "";
+  this.walk(function (chunk) {
+    str += chunk;
+  });
+  return str;
+};
+
+/**
+ * Returns the string representation of this source node along with a source
+ * map.
+ */
+SourceNode.prototype.toStringWithSourceMap = function SourceNode_toStringWithSourceMap(aArgs) {
+  var generated = {
+    code: "",
+    line: 1,
+    column: 0
+  };
+  var map = new SourceMapGenerator(aArgs);
+  var sourceMappingActive = false;
+  var lastOriginalSource = null;
+  var lastOriginalLine = null;
+  var lastOriginalColumn = null;
+  var lastOriginalName = null;
+  this.walk(function (chunk, original) {
+    generated.code += chunk;
+    if (original.source !== null
+        && original.line !== null
+        && original.column !== null) {
+      if(lastOriginalSource !== original.source
+         || lastOriginalLine !== original.line
+         || lastOriginalColumn !== original.column
+         || lastOriginalName !== original.name) {
+        map.addMapping({
+          source: original.source,
+          original: {
+            line: original.line,
+            column: original.column
+          },
+          generated: {
+            line: generated.line,
+            column: generated.column
+          },
+          name: original.name
+        });
+      }
+      lastOriginalSource = original.source;
+      lastOriginalLine = original.line;
+      lastOriginalColumn = original.column;
+      lastOriginalName = original.name;
+      sourceMappingActive = true;
+    } else if (sourceMappingActive) {
+      map.addMapping({
+        generated: {
+          line: generated.line,
+          column: generated.column
+        }
+      });
+      lastOriginalSource = null;
+      sourceMappingActive = false;
+    }
+    for (var idx = 0, length = chunk.length; idx < length; idx++) {
+      if (chunk.charCodeAt(idx) === NEWLINE_CODE) {
+        generated.line++;
+        generated.column = 0;
+        // Mappings end at eol
+        if (idx + 1 === length) {
+          lastOriginalSource = null;
+          sourceMappingActive = false;
+        } else if (sourceMappingActive) {
+          map.addMapping({
+            source: original.source,
+            original: {
+              line: original.line,
+              column: original.column
+            },
+            generated: {
+              line: generated.line,
+              column: generated.column
+            },
+            name: original.name
+          });
+        }
+      } else {
+        generated.column++;
+      }
+    }
+  });
+  this.walkSourceContents(function (sourceFile, sourceContent) {
+    map.setSourceContent(sourceFile, sourceContent);
+  });
+
+  return { code: generated.code, map: map };
+};
+
+exports.SourceNode = SourceNode;
+
+
+/***/ }),
+/* 116 */
 /*!******************************************************!*\
   !*** ./node_modules/@babel/generator/lib/printer.js ***!
   \******************************************************/
@@ -19435,13 +23540,13 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = void 0;
 
-var _buffer = __webpack_require__(/*! ./buffer */ 104);
+var _buffer = __webpack_require__(/*! ./buffer */ 117);
 
-var n = __webpack_require__(/*! ./node */ 105);
+var n = __webpack_require__(/*! ./node */ 118);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var generatorFunctions = __webpack_require__(/*! ./generators */ 108);
+var generatorFunctions = __webpack_require__(/*! ./generators */ 121);
 
 const {
   isProgram,
@@ -19970,7 +24075,7 @@ function commaSeparator() {
 }
 
 /***/ }),
-/* 104 */
+/* 117 */
 /*!*****************************************************!*\
   !*** ./node_modules/@babel/generator/lib/buffer.js ***!
   \*****************************************************/
@@ -20245,7 +24350,7 @@ class Buffer {
 exports.default = Buffer;
 
 /***/ }),
-/* 105 */
+/* 118 */
 /*!*********************************************************!*\
   !*** ./node_modules/@babel/generator/lib/node/index.js ***!
   \*********************************************************/
@@ -20263,9 +24368,9 @@ exports.needsWhitespaceBefore = needsWhitespaceBefore;
 exports.needsWhitespaceAfter = needsWhitespaceAfter;
 exports.needsParens = needsParens;
 
-var whitespace = __webpack_require__(/*! ./whitespace */ 106);
+var whitespace = __webpack_require__(/*! ./whitespace */ 119);
 
-var parens = __webpack_require__(/*! ./parentheses */ 107);
+var parens = __webpack_require__(/*! ./parentheses */ 120);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
@@ -20366,7 +24471,7 @@ function needsParens(node, parent, printStack) {
 }
 
 /***/ }),
-/* 106 */
+/* 119 */
 /*!**************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/node/whitespace.js ***!
   \**************************************************************/
@@ -20590,7 +24695,7 @@ exports.list = list;
 });
 
 /***/ }),
-/* 107 */
+/* 120 */
 /*!***************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/node/parentheses.js ***!
   \***************************************************************/
@@ -20942,7 +25047,7 @@ function isFirstInContext(printStack, {
 }
 
 /***/ }),
-/* 108 */
+/* 121 */
 /*!***************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/index.js ***!
   \***************************************************************/
@@ -20956,7 +25061,7 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
-var _templateLiterals = __webpack_require__(/*! ./template-literals */ 109);
+var _templateLiterals = __webpack_require__(/*! ./template-literals */ 122);
 
 Object.keys(_templateLiterals).forEach(function (key) {
   if (key === "default" || key === "__esModule") return;
@@ -20969,7 +25074,7 @@ Object.keys(_templateLiterals).forEach(function (key) {
   });
 });
 
-var _expressions = __webpack_require__(/*! ./expressions */ 110);
+var _expressions = __webpack_require__(/*! ./expressions */ 123);
 
 Object.keys(_expressions).forEach(function (key) {
   if (key === "default" || key === "__esModule") return;
@@ -20982,7 +25087,7 @@ Object.keys(_expressions).forEach(function (key) {
   });
 });
 
-var _statements = __webpack_require__(/*! ./statements */ 111);
+var _statements = __webpack_require__(/*! ./statements */ 124);
 
 Object.keys(_statements).forEach(function (key) {
   if (key === "default" || key === "__esModule") return;
@@ -20995,7 +25100,7 @@ Object.keys(_statements).forEach(function (key) {
   });
 });
 
-var _classes = __webpack_require__(/*! ./classes */ 112);
+var _classes = __webpack_require__(/*! ./classes */ 125);
 
 Object.keys(_classes).forEach(function (key) {
   if (key === "default" || key === "__esModule") return;
@@ -21008,7 +25113,7 @@ Object.keys(_classes).forEach(function (key) {
   });
 });
 
-var _methods = __webpack_require__(/*! ./methods */ 113);
+var _methods = __webpack_require__(/*! ./methods */ 126);
 
 Object.keys(_methods).forEach(function (key) {
   if (key === "default" || key === "__esModule") return;
@@ -21021,7 +25126,7 @@ Object.keys(_methods).forEach(function (key) {
   });
 });
 
-var _modules = __webpack_require__(/*! ./modules */ 114);
+var _modules = __webpack_require__(/*! ./modules */ 127);
 
 Object.keys(_modules).forEach(function (key) {
   if (key === "default" || key === "__esModule") return;
@@ -21034,7 +25139,7 @@ Object.keys(_modules).forEach(function (key) {
   });
 });
 
-var _types = __webpack_require__(/*! ./types */ 115);
+var _types = __webpack_require__(/*! ./types */ 128);
 
 Object.keys(_types).forEach(function (key) {
   if (key === "default" || key === "__esModule") return;
@@ -21047,7 +25152,7 @@ Object.keys(_types).forEach(function (key) {
   });
 });
 
-var _flow = __webpack_require__(/*! ./flow */ 122);
+var _flow = __webpack_require__(/*! ./flow */ 135);
 
 Object.keys(_flow).forEach(function (key) {
   if (key === "default" || key === "__esModule") return;
@@ -21060,7 +25165,7 @@ Object.keys(_flow).forEach(function (key) {
   });
 });
 
-var _base = __webpack_require__(/*! ./base */ 123);
+var _base = __webpack_require__(/*! ./base */ 136);
 
 Object.keys(_base).forEach(function (key) {
   if (key === "default" || key === "__esModule") return;
@@ -21073,7 +25178,7 @@ Object.keys(_base).forEach(function (key) {
   });
 });
 
-var _jsx = __webpack_require__(/*! ./jsx */ 124);
+var _jsx = __webpack_require__(/*! ./jsx */ 137);
 
 Object.keys(_jsx).forEach(function (key) {
   if (key === "default" || key === "__esModule") return;
@@ -21086,7 +25191,7 @@ Object.keys(_jsx).forEach(function (key) {
   });
 });
 
-var _typescript = __webpack_require__(/*! ./typescript */ 125);
+var _typescript = __webpack_require__(/*! ./typescript */ 138);
 
 Object.keys(_typescript).forEach(function (key) {
   if (key === "default" || key === "__esModule") return;
@@ -21100,7 +25205,7 @@ Object.keys(_typescript).forEach(function (key) {
 });
 
 /***/ }),
-/* 109 */
+/* 122 */
 /*!***************************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/template-literals.js ***!
   \***************************************************************************/
@@ -21143,7 +25248,7 @@ function TemplateLiteral(node) {
 }
 
 /***/ }),
-/* 110 */
+/* 123 */
 /*!*********************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/expressions.js ***!
   \*********************************************************************/
@@ -21184,7 +25289,7 @@ exports.AwaitExpression = exports.YieldExpression = void 0;
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var n = __webpack_require__(/*! ../node */ 105);
+var n = __webpack_require__(/*! ../node */ 118);
 
 const {
   isCallExpression,
@@ -21470,7 +25575,7 @@ function ModuleExpression(node) {
 }
 
 /***/ }),
-/* 111 */
+/* 124 */
 /*!********************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/statements.js ***!
   \********************************************************************/
@@ -21807,7 +25912,7 @@ function VariableDeclarator(node) {
 }
 
 /***/ }),
-/* 112 */
+/* 125 */
 /*!*****************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/classes.js ***!
   \*****************************************************************/
@@ -21990,7 +26095,7 @@ function StaticBlock(node) {
 }
 
 /***/ }),
-/* 113 */
+/* 126 */
 /*!*****************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/methods.js ***!
   \*****************************************************************/
@@ -22149,7 +26254,7 @@ function hasTypesOrComments(node, param) {
 }
 
 /***/ }),
-/* 114 */
+/* 127 */
 /*!*****************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/modules.js ***!
   \*****************************************************************/
@@ -22393,7 +26498,7 @@ function ImportNamespaceSpecifier(node) {
 }
 
 /***/ }),
-/* 115 */
+/* 128 */
 /*!***************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/types.js ***!
   \***************************************************************/
@@ -22429,7 +26534,7 @@ exports.PipelinePrimaryTopicReference = PipelinePrimaryTopicReference;
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var _jsesc = __webpack_require__(/*! jsesc */ 116);
+var _jsesc = __webpack_require__(/*! jsesc */ 129);
 
 const {
   isAssignmentPattern,
@@ -22682,7 +26787,7 @@ function PipelinePrimaryTopicReference() {
 }
 
 /***/ }),
-/* 116 */
+/* 129 */
 /*!*************************************!*\
   !*** ./node_modules/jsesc/jsesc.js ***!
   \*************************************/
@@ -23020,10 +27125,10 @@ jsesc.version = '2.5.2';
 
 module.exports = jsesc;
 
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../buffer/index.js */ 117).Buffer))
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../buffer/index.js */ 130).Buffer))
 
 /***/ }),
-/* 117 */
+/* 130 */
 /*!**************************************!*\
   !*** ./node_modules/buffer/index.js ***!
   \**************************************/
@@ -23041,9 +27146,9 @@ module.exports = jsesc;
 
 
 
-var base64 = __webpack_require__(/*! base64-js */ 119)
-var ieee754 = __webpack_require__(/*! ieee754 */ 120)
-var isArray = __webpack_require__(/*! isarray */ 121)
+var base64 = __webpack_require__(/*! base64-js */ 132)
+var ieee754 = __webpack_require__(/*! ieee754 */ 133)
+var isArray = __webpack_require__(/*! isarray */ 134)
 
 exports.Buffer = Buffer
 exports.SlowBuffer = SlowBuffer
@@ -24821,10 +28926,10 @@ function isnan (val) {
   return val !== val // eslint-disable-line no-self-compare
 }
 
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../webpack/buildin/global.js */ 118)))
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../webpack/buildin/global.js */ 131)))
 
 /***/ }),
-/* 118 */
+/* 131 */
 /*!***********************************!*\
   !*** (webpack)/buildin/global.js ***!
   \***********************************/
@@ -24854,7 +28959,7 @@ module.exports = g;
 
 
 /***/ }),
-/* 119 */
+/* 132 */
 /*!*****************************************!*\
   !*** ./node_modules/base64-js/index.js ***!
   \*****************************************/
@@ -25015,7 +29120,7 @@ function fromByteArray (uint8) {
 
 
 /***/ }),
-/* 120 */
+/* 133 */
 /*!***************************************!*\
   !*** ./node_modules/ieee754/index.js ***!
   \***************************************/
@@ -25110,7 +29215,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
 
 
 /***/ }),
-/* 121 */
+/* 134 */
 /*!***************************************!*\
   !*** ./node_modules/isarray/index.js ***!
   \***************************************/
@@ -25125,7 +29230,7 @@ module.exports = Array.isArray || function (arr) {
 
 
 /***/ }),
-/* 122 */
+/* 135 */
 /*!**************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/flow.js ***!
   \**************************************************************/
@@ -25215,9 +29320,9 @@ Object.defineProperty(exports, "StringLiteralTypeAnnotation", {
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var _modules = __webpack_require__(/*! ./modules */ 114);
+var _modules = __webpack_require__(/*! ./modules */ 127);
 
-var _types2 = __webpack_require__(/*! ./types */ 115);
+var _types2 = __webpack_require__(/*! ./types */ 128);
 
 const {
   isDeclareExportDeclaration,
@@ -25930,7 +30035,7 @@ function OptionalIndexedAccessType(node) {
 }
 
 /***/ }),
-/* 123 */
+/* 136 */
 /*!**************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/base.js ***!
   \**************************************************************/
@@ -26036,7 +30141,7 @@ function Placeholder(node) {
 }
 
 /***/ }),
-/* 124 */
+/* 137 */
 /*!*************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/jsx.js ***!
   \*************************************************************/
@@ -26191,7 +30296,7 @@ function JSXClosingFragment() {
 }
 
 /***/ }),
-/* 125 */
+/* 138 */
 /*!********************************************************************!*\
   !*** ./node_modules/@babel/generator/lib/generators/typescript.js ***!
   \********************************************************************/
@@ -27007,7 +31112,7 @@ function tsPrintClassMemberModifiers(node, isField) {
 }
 
 /***/ }),
-/* 126 */
+/* 139 */
 /*!***********************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/ancestry.js ***!
   \***********************************************************/
@@ -27197,7 +31302,7 @@ function inType(...candidateTypes) {
 }
 
 /***/ }),
-/* 127 */
+/* 140 */
 /*!******************************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/inference/index.js ***!
   \******************************************************************/
@@ -27217,7 +31322,7 @@ exports.couldBeBaseType = couldBeBaseType;
 exports.baseTypeStrictlyMatches = baseTypeStrictlyMatches;
 exports.isGenericType = isGenericType;
 
-var inferers = __webpack_require__(/*! ./inferers */ 128);
+var inferers = __webpack_require__(/*! ./inferers */ 141);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
@@ -27363,7 +31468,7 @@ function isGenericType(genericName) {
 }
 
 /***/ }),
-/* 128 */
+/* 141 */
 /*!*********************************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/inference/inferers.js ***!
   \*********************************************************************/
@@ -27408,7 +31513,7 @@ Object.defineProperty(exports, "Identifier", {
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var _infererReference = __webpack_require__(/*! ./inferer-reference */ 129);
+var _infererReference = __webpack_require__(/*! ./inferer-reference */ 142);
 
 const {
   BOOLEAN_BINARY_OPERATORS,
@@ -27634,7 +31739,7 @@ function resolveCall(callee) {
 }
 
 /***/ }),
-/* 129 */
+/* 142 */
 /*!******************************************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/inference/inferer-reference.js ***!
   \******************************************************************************/
@@ -27850,7 +31955,7 @@ function getConditionalAnnotation(binding, path, name) {
 }
 
 /***/ }),
-/* 130 */
+/* 143 */
 /*!**************************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/replacement.js ***!
   \**************************************************************/
@@ -27870,19 +31975,19 @@ exports._replaceWith = _replaceWith;
 exports.replaceExpressionWithStatements = replaceExpressionWithStatements;
 exports.replaceInline = replaceInline;
 
-var _codeFrame = __webpack_require__(/*! @babel/code-frame */ 131);
+var _codeFrame = __webpack_require__(/*! @babel/code-frame */ 144);
 
 var _index = __webpack_require__(/*! ../index */ 4);
 
 var _index2 = __webpack_require__(/*! ./index */ 6);
 
-var _cache = __webpack_require__(/*! ../cache */ 99);
+var _cache = __webpack_require__(/*! ../cache */ 102);
 
-var _parser = __webpack_require__(/*! @babel/parser */ 135);
+var _parser = __webpack_require__(/*! @babel/parser */ 157);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var _helperHoistVariables = __webpack_require__(/*! @babel/helper-hoist-variables */ 136);
+var _helperHoistVariables = __webpack_require__(/*! @babel/helper-hoist-variables */ 158);
 
 const {
   FUNCTION_TYPES,
@@ -28120,7 +32225,7 @@ function replaceInline(nodes) {
 }
 
 /***/ }),
-/* 131 */
+/* 144 */
 /*!*****************************************************!*\
   !*** ./node_modules/@babel/code-frame/lib/index.js ***!
   \*****************************************************/
@@ -28136,7 +32241,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.codeFrameColumns = codeFrameColumns;
 exports.default = _default;
 
-var _highlight = __webpack_require__(/*! @babel/highlight */ 132);
+var _highlight = __webpack_require__(/*! @babel/highlight */ 145);
 
 let deprecationWarningShown = false;
 
@@ -28294,7 +32399,7 @@ function _default(rawLines, lineNumber, colNumber, opts = {}) {
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../../../process/browser.js */ 22)))
 
 /***/ }),
-/* 132 */
+/* 145 */
 /*!****************************************************!*\
   !*** ./node_modules/@babel/highlight/lib/index.js ***!
   \****************************************************/
@@ -28311,11 +32416,11 @@ exports.shouldHighlight = shouldHighlight;
 exports.getChalk = getChalk;
 exports.default = highlight;
 
-var _jsTokens = __webpack_require__(/*! js-tokens */ 133);
+var _jsTokens = __webpack_require__(/*! js-tokens */ 146);
 
 var _helperValidatorIdentifier = __webpack_require__(/*! @babel/helper-validator-identifier */ 27);
 
-var _chalk = __webpack_require__(/*! chalk */ 134);
+var _chalk = __webpack_require__(/*! chalk */ 147);
 
 const sometimesKeywords = new Set(["as", "async", "from", "get", "of", "set"]);
 
@@ -28420,7 +32525,7 @@ function highlight(code, options = {}) {
 }
 
 /***/ }),
-/* 133 */
+/* 146 */
 /*!*****************************************!*\
   !*** ./node_modules/js-tokens/index.js ***!
   \*****************************************/
@@ -28453,17 +32558,1869 @@ exports.matchToToken = function(match) {
 
 
 /***/ }),
-/* 134 */
-/*!************************!*\
-  !*** external "chalk" ***!
-  \************************/
+/* 147 */
+/*!*************************************!*\
+  !*** ./node_modules/chalk/index.js ***!
+  \*************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(process) {
+const escapeStringRegexp = __webpack_require__(/*! escape-string-regexp */ 148);
+const ansiStyles = __webpack_require__(/*! ansi-styles */ 149);
+const stdoutColor = __webpack_require__(/*! supports-color */ 155).stdout;
+
+const template = __webpack_require__(/*! ./templates.js */ 156);
+
+const isSimpleWindowsTerm = process.platform === 'win32' && !(process.env.TERM || '').toLowerCase().startsWith('xterm');
+
+// `supportsColor.level` → `ansiStyles.color[name]` mapping
+const levelMapping = ['ansi', 'ansi', 'ansi256', 'ansi16m'];
+
+// `color-convert` models to exclude from the Chalk API due to conflicts and such
+const skipModels = new Set(['gray']);
+
+const styles = Object.create(null);
+
+function applyOptions(obj, options) {
+	options = options || {};
+
+	// Detect level if not set manually
+	const scLevel = stdoutColor ? stdoutColor.level : 0;
+	obj.level = options.level === undefined ? scLevel : options.level;
+	obj.enabled = 'enabled' in options ? options.enabled : obj.level > 0;
+}
+
+function Chalk(options) {
+	// We check for this.template here since calling `chalk.constructor()`
+	// by itself will have a `this` of a previously constructed chalk object
+	if (!this || !(this instanceof Chalk) || this.template) {
+		const chalk = {};
+		applyOptions(chalk, options);
+
+		chalk.template = function () {
+			const args = [].slice.call(arguments);
+			return chalkTag.apply(null, [chalk.template].concat(args));
+		};
+
+		Object.setPrototypeOf(chalk, Chalk.prototype);
+		Object.setPrototypeOf(chalk.template, chalk);
+
+		chalk.template.constructor = Chalk;
+
+		return chalk.template;
+	}
+
+	applyOptions(this, options);
+}
+
+// Use bright blue on Windows as the normal blue color is illegible
+if (isSimpleWindowsTerm) {
+	ansiStyles.blue.open = '\u001B[94m';
+}
+
+for (const key of Object.keys(ansiStyles)) {
+	ansiStyles[key].closeRe = new RegExp(escapeStringRegexp(ansiStyles[key].close), 'g');
+
+	styles[key] = {
+		get() {
+			const codes = ansiStyles[key];
+			return build.call(this, this._styles ? this._styles.concat(codes) : [codes], this._empty, key);
+		}
+	};
+}
+
+styles.visible = {
+	get() {
+		return build.call(this, this._styles || [], true, 'visible');
+	}
+};
+
+ansiStyles.color.closeRe = new RegExp(escapeStringRegexp(ansiStyles.color.close), 'g');
+for (const model of Object.keys(ansiStyles.color.ansi)) {
+	if (skipModels.has(model)) {
+		continue;
+	}
+
+	styles[model] = {
+		get() {
+			const level = this.level;
+			return function () {
+				const open = ansiStyles.color[levelMapping[level]][model].apply(null, arguments);
+				const codes = {
+					open,
+					close: ansiStyles.color.close,
+					closeRe: ansiStyles.color.closeRe
+				};
+				return build.call(this, this._styles ? this._styles.concat(codes) : [codes], this._empty, model);
+			};
+		}
+	};
+}
+
+ansiStyles.bgColor.closeRe = new RegExp(escapeStringRegexp(ansiStyles.bgColor.close), 'g');
+for (const model of Object.keys(ansiStyles.bgColor.ansi)) {
+	if (skipModels.has(model)) {
+		continue;
+	}
+
+	const bgModel = 'bg' + model[0].toUpperCase() + model.slice(1);
+	styles[bgModel] = {
+		get() {
+			const level = this.level;
+			return function () {
+				const open = ansiStyles.bgColor[levelMapping[level]][model].apply(null, arguments);
+				const codes = {
+					open,
+					close: ansiStyles.bgColor.close,
+					closeRe: ansiStyles.bgColor.closeRe
+				};
+				return build.call(this, this._styles ? this._styles.concat(codes) : [codes], this._empty, model);
+			};
+		}
+	};
+}
+
+const proto = Object.defineProperties(() => {}, styles);
+
+function build(_styles, _empty, key) {
+	const builder = function () {
+		return applyStyle.apply(builder, arguments);
+	};
+
+	builder._styles = _styles;
+	builder._empty = _empty;
+
+	const self = this;
+
+	Object.defineProperty(builder, 'level', {
+		enumerable: true,
+		get() {
+			return self.level;
+		},
+		set(level) {
+			self.level = level;
+		}
+	});
+
+	Object.defineProperty(builder, 'enabled', {
+		enumerable: true,
+		get() {
+			return self.enabled;
+		},
+		set(enabled) {
+			self.enabled = enabled;
+		}
+	});
+
+	// See below for fix regarding invisible grey/dim combination on Windows
+	builder.hasGrey = this.hasGrey || key === 'gray' || key === 'grey';
+
+	// `__proto__` is used because we must return a function, but there is
+	// no way to create a function with a different prototype
+	builder.__proto__ = proto; // eslint-disable-line no-proto
+
+	return builder;
+}
+
+function applyStyle() {
+	// Support varags, but simply cast to string in case there's only one arg
+	const args = arguments;
+	const argsLen = args.length;
+	let str = String(arguments[0]);
+
+	if (argsLen === 0) {
+		return '';
+	}
+
+	if (argsLen > 1) {
+		// Don't slice `arguments`, it prevents V8 optimizations
+		for (let a = 1; a < argsLen; a++) {
+			str += ' ' + args[a];
+		}
+	}
+
+	if (!this.enabled || this.level <= 0 || !str) {
+		return this._empty ? '' : str;
+	}
+
+	// Turns out that on Windows dimmed gray text becomes invisible in cmd.exe,
+	// see https://github.com/chalk/chalk/issues/58
+	// If we're on Windows and we're dealing with a gray color, temporarily make 'dim' a noop.
+	const originalDim = ansiStyles.dim.open;
+	if (isSimpleWindowsTerm && this.hasGrey) {
+		ansiStyles.dim.open = '';
+	}
+
+	for (const code of this._styles.slice().reverse()) {
+		// Replace any instances already present with a re-opening code
+		// otherwise only the part of the string until said closing code
+		// will be colored, and the rest will simply be 'plain'.
+		str = code.open + str.replace(code.closeRe, code.open) + code.close;
+
+		// Close the styling before a linebreak and reopen
+		// after next line to fix a bleed issue on macOS
+		// https://github.com/chalk/chalk/pull/92
+		str = str.replace(/\r?\n/g, `${code.close}$&${code.open}`);
+	}
+
+	// Reset the original `dim` if we changed it to work around the Windows dimmed gray issue
+	ansiStyles.dim.open = originalDim;
+
+	return str;
+}
+
+function chalkTag(chalk, strings) {
+	if (!Array.isArray(strings)) {
+		// If chalk() was called by itself or with a string,
+		// return the string itself as a string.
+		return [].slice.call(arguments, 1).join(' ');
+	}
+
+	const args = [].slice.call(arguments, 2);
+	const parts = [strings.raw[0]];
+
+	for (let i = 1; i < strings.length; i++) {
+		parts.push(String(args[i - 1]).replace(/[{}\\]/g, '\\$&'));
+		parts.push(String(strings.raw[i]));
+	}
+
+	return template(chalk, parts.join(''));
+}
+
+Object.defineProperties(Chalk.prototype, styles);
+
+module.exports = Chalk(); // eslint-disable-line new-cap
+module.exports.supportsColor = stdoutColor;
+module.exports.default = module.exports; // For TypeScript
+
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../process/browser.js */ 22)))
+
+/***/ }),
+/* 148 */
+/*!****************************************************!*\
+  !*** ./node_modules/escape-string-regexp/index.js ***!
+  \****************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+var matchOperatorsRe = /[|\\{}()[\]^$+*?.]/g;
+
+module.exports = function (str) {
+	if (typeof str !== 'string') {
+		throw new TypeError('Expected a string');
+	}
+
+	return str.replace(matchOperatorsRe, '\\$&');
+};
+
+
+/***/ }),
+/* 149 */
+/*!*******************************************!*\
+  !*** ./node_modules/ansi-styles/index.js ***!
+  \*******************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(module) {
+const colorConvert = __webpack_require__(/*! color-convert */ 151);
+
+const wrapAnsi16 = (fn, offset) => function () {
+	const code = fn.apply(colorConvert, arguments);
+	return `\u001B[${code + offset}m`;
+};
+
+const wrapAnsi256 = (fn, offset) => function () {
+	const code = fn.apply(colorConvert, arguments);
+	return `\u001B[${38 + offset};5;${code}m`;
+};
+
+const wrapAnsi16m = (fn, offset) => function () {
+	const rgb = fn.apply(colorConvert, arguments);
+	return `\u001B[${38 + offset};2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
+};
+
+function assembleStyles() {
+	const codes = new Map();
+	const styles = {
+		modifier: {
+			reset: [0, 0],
+			// 21 isn't widely supported and 22 does the same thing
+			bold: [1, 22],
+			dim: [2, 22],
+			italic: [3, 23],
+			underline: [4, 24],
+			inverse: [7, 27],
+			hidden: [8, 28],
+			strikethrough: [9, 29]
+		},
+		color: {
+			black: [30, 39],
+			red: [31, 39],
+			green: [32, 39],
+			yellow: [33, 39],
+			blue: [34, 39],
+			magenta: [35, 39],
+			cyan: [36, 39],
+			white: [37, 39],
+			gray: [90, 39],
+
+			// Bright color
+			redBright: [91, 39],
+			greenBright: [92, 39],
+			yellowBright: [93, 39],
+			blueBright: [94, 39],
+			magentaBright: [95, 39],
+			cyanBright: [96, 39],
+			whiteBright: [97, 39]
+		},
+		bgColor: {
+			bgBlack: [40, 49],
+			bgRed: [41, 49],
+			bgGreen: [42, 49],
+			bgYellow: [43, 49],
+			bgBlue: [44, 49],
+			bgMagenta: [45, 49],
+			bgCyan: [46, 49],
+			bgWhite: [47, 49],
+
+			// Bright color
+			bgBlackBright: [100, 49],
+			bgRedBright: [101, 49],
+			bgGreenBright: [102, 49],
+			bgYellowBright: [103, 49],
+			bgBlueBright: [104, 49],
+			bgMagentaBright: [105, 49],
+			bgCyanBright: [106, 49],
+			bgWhiteBright: [107, 49]
+		}
+	};
+
+	// Fix humans
+	styles.color.grey = styles.color.gray;
+
+	for (const groupName of Object.keys(styles)) {
+		const group = styles[groupName];
+
+		for (const styleName of Object.keys(group)) {
+			const style = group[styleName];
+
+			styles[styleName] = {
+				open: `\u001B[${style[0]}m`,
+				close: `\u001B[${style[1]}m`
+			};
+
+			group[styleName] = styles[styleName];
+
+			codes.set(style[0], style[1]);
+		}
+
+		Object.defineProperty(styles, groupName, {
+			value: group,
+			enumerable: false
+		});
+
+		Object.defineProperty(styles, 'codes', {
+			value: codes,
+			enumerable: false
+		});
+	}
+
+	const ansi2ansi = n => n;
+	const rgb2rgb = (r, g, b) => [r, g, b];
+
+	styles.color.close = '\u001B[39m';
+	styles.bgColor.close = '\u001B[49m';
+
+	styles.color.ansi = {
+		ansi: wrapAnsi16(ansi2ansi, 0)
+	};
+	styles.color.ansi256 = {
+		ansi256: wrapAnsi256(ansi2ansi, 0)
+	};
+	styles.color.ansi16m = {
+		rgb: wrapAnsi16m(rgb2rgb, 0)
+	};
+
+	styles.bgColor.ansi = {
+		ansi: wrapAnsi16(ansi2ansi, 10)
+	};
+	styles.bgColor.ansi256 = {
+		ansi256: wrapAnsi256(ansi2ansi, 10)
+	};
+	styles.bgColor.ansi16m = {
+		rgb: wrapAnsi16m(rgb2rgb, 10)
+	};
+
+	for (let key of Object.keys(colorConvert)) {
+		if (typeof colorConvert[key] !== 'object') {
+			continue;
+		}
+
+		const suite = colorConvert[key];
+
+		if (key === 'ansi16') {
+			key = 'ansi';
+		}
+
+		if ('ansi16' in suite) {
+			styles.color.ansi[key] = wrapAnsi16(suite.ansi16, 0);
+			styles.bgColor.ansi[key] = wrapAnsi16(suite.ansi16, 10);
+		}
+
+		if ('ansi256' in suite) {
+			styles.color.ansi256[key] = wrapAnsi256(suite.ansi256, 0);
+			styles.bgColor.ansi256[key] = wrapAnsi256(suite.ansi256, 10);
+		}
+
+		if ('rgb' in suite) {
+			styles.color.ansi16m[key] = wrapAnsi16m(suite.rgb, 0);
+			styles.bgColor.ansi16m[key] = wrapAnsi16m(suite.rgb, 10);
+		}
+	}
+
+	return styles;
+}
+
+// Make the export immutable
+Object.defineProperty(module, 'exports', {
+	enumerable: true,
+	get: assembleStyles
+});
+
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../webpack/buildin/module.js */ 150)(module)))
+
+/***/ }),
+/* 150 */
+/*!***********************************!*\
+  !*** (webpack)/buildin/module.js ***!
+  \***********************************/
 /*! no static exports found */
 /***/ (function(module, exports) {
 
-module.exports = require("chalk");
+module.exports = function(module) {
+	if (!module.webpackPolyfill) {
+		module.deprecate = function() {};
+		module.paths = [];
+		// module.parent = undefined by default
+		if (!module.children) module.children = [];
+		Object.defineProperty(module, "loaded", {
+			enumerable: true,
+			get: function() {
+				return module.l;
+			}
+		});
+		Object.defineProperty(module, "id", {
+			enumerable: true,
+			get: function() {
+				return module.i;
+			}
+		});
+		module.webpackPolyfill = 1;
+	}
+	return module;
+};
+
 
 /***/ }),
-/* 135 */
+/* 151 */
+/*!*********************************************!*\
+  !*** ./node_modules/color-convert/index.js ***!
+  \*********************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var conversions = __webpack_require__(/*! ./conversions */ 152);
+var route = __webpack_require__(/*! ./route */ 154);
+
+var convert = {};
+
+var models = Object.keys(conversions);
+
+function wrapRaw(fn) {
+	var wrappedFn = function (args) {
+		if (args === undefined || args === null) {
+			return args;
+		}
+
+		if (arguments.length > 1) {
+			args = Array.prototype.slice.call(arguments);
+		}
+
+		return fn(args);
+	};
+
+	// preserve .conversion property if there is one
+	if ('conversion' in fn) {
+		wrappedFn.conversion = fn.conversion;
+	}
+
+	return wrappedFn;
+}
+
+function wrapRounded(fn) {
+	var wrappedFn = function (args) {
+		if (args === undefined || args === null) {
+			return args;
+		}
+
+		if (arguments.length > 1) {
+			args = Array.prototype.slice.call(arguments);
+		}
+
+		var result = fn(args);
+
+		// we're assuming the result is an array here.
+		// see notice in conversions.js; don't use box types
+		// in conversion functions.
+		if (typeof result === 'object') {
+			for (var len = result.length, i = 0; i < len; i++) {
+				result[i] = Math.round(result[i]);
+			}
+		}
+
+		return result;
+	};
+
+	// preserve .conversion property if there is one
+	if ('conversion' in fn) {
+		wrappedFn.conversion = fn.conversion;
+	}
+
+	return wrappedFn;
+}
+
+models.forEach(function (fromModel) {
+	convert[fromModel] = {};
+
+	Object.defineProperty(convert[fromModel], 'channels', {value: conversions[fromModel].channels});
+	Object.defineProperty(convert[fromModel], 'labels', {value: conversions[fromModel].labels});
+
+	var routes = route(fromModel);
+	var routeModels = Object.keys(routes);
+
+	routeModels.forEach(function (toModel) {
+		var fn = routes[toModel];
+
+		convert[fromModel][toModel] = wrapRounded(fn);
+		convert[fromModel][toModel].raw = wrapRaw(fn);
+	});
+});
+
+module.exports = convert;
+
+
+/***/ }),
+/* 152 */
+/*!***************************************************!*\
+  !*** ./node_modules/color-convert/conversions.js ***!
+  \***************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* MIT license */
+var cssKeywords = __webpack_require__(/*! color-name */ 153);
+
+// NOTE: conversions should only return primitive values (i.e. arrays, or
+//       values that give correct `typeof` results).
+//       do not use box values types (i.e. Number(), String(), etc.)
+
+var reverseKeywords = {};
+for (var key in cssKeywords) {
+	if (cssKeywords.hasOwnProperty(key)) {
+		reverseKeywords[cssKeywords[key]] = key;
+	}
+}
+
+var convert = module.exports = {
+	rgb: {channels: 3, labels: 'rgb'},
+	hsl: {channels: 3, labels: 'hsl'},
+	hsv: {channels: 3, labels: 'hsv'},
+	hwb: {channels: 3, labels: 'hwb'},
+	cmyk: {channels: 4, labels: 'cmyk'},
+	xyz: {channels: 3, labels: 'xyz'},
+	lab: {channels: 3, labels: 'lab'},
+	lch: {channels: 3, labels: 'lch'},
+	hex: {channels: 1, labels: ['hex']},
+	keyword: {channels: 1, labels: ['keyword']},
+	ansi16: {channels: 1, labels: ['ansi16']},
+	ansi256: {channels: 1, labels: ['ansi256']},
+	hcg: {channels: 3, labels: ['h', 'c', 'g']},
+	apple: {channels: 3, labels: ['r16', 'g16', 'b16']},
+	gray: {channels: 1, labels: ['gray']}
+};
+
+// hide .channels and .labels properties
+for (var model in convert) {
+	if (convert.hasOwnProperty(model)) {
+		if (!('channels' in convert[model])) {
+			throw new Error('missing channels property: ' + model);
+		}
+
+		if (!('labels' in convert[model])) {
+			throw new Error('missing channel labels property: ' + model);
+		}
+
+		if (convert[model].labels.length !== convert[model].channels) {
+			throw new Error('channel and label counts mismatch: ' + model);
+		}
+
+		var channels = convert[model].channels;
+		var labels = convert[model].labels;
+		delete convert[model].channels;
+		delete convert[model].labels;
+		Object.defineProperty(convert[model], 'channels', {value: channels});
+		Object.defineProperty(convert[model], 'labels', {value: labels});
+	}
+}
+
+convert.rgb.hsl = function (rgb) {
+	var r = rgb[0] / 255;
+	var g = rgb[1] / 255;
+	var b = rgb[2] / 255;
+	var min = Math.min(r, g, b);
+	var max = Math.max(r, g, b);
+	var delta = max - min;
+	var h;
+	var s;
+	var l;
+
+	if (max === min) {
+		h = 0;
+	} else if (r === max) {
+		h = (g - b) / delta;
+	} else if (g === max) {
+		h = 2 + (b - r) / delta;
+	} else if (b === max) {
+		h = 4 + (r - g) / delta;
+	}
+
+	h = Math.min(h * 60, 360);
+
+	if (h < 0) {
+		h += 360;
+	}
+
+	l = (min + max) / 2;
+
+	if (max === min) {
+		s = 0;
+	} else if (l <= 0.5) {
+		s = delta / (max + min);
+	} else {
+		s = delta / (2 - max - min);
+	}
+
+	return [h, s * 100, l * 100];
+};
+
+convert.rgb.hsv = function (rgb) {
+	var rdif;
+	var gdif;
+	var bdif;
+	var h;
+	var s;
+
+	var r = rgb[0] / 255;
+	var g = rgb[1] / 255;
+	var b = rgb[2] / 255;
+	var v = Math.max(r, g, b);
+	var diff = v - Math.min(r, g, b);
+	var diffc = function (c) {
+		return (v - c) / 6 / diff + 1 / 2;
+	};
+
+	if (diff === 0) {
+		h = s = 0;
+	} else {
+		s = diff / v;
+		rdif = diffc(r);
+		gdif = diffc(g);
+		bdif = diffc(b);
+
+		if (r === v) {
+			h = bdif - gdif;
+		} else if (g === v) {
+			h = (1 / 3) + rdif - bdif;
+		} else if (b === v) {
+			h = (2 / 3) + gdif - rdif;
+		}
+		if (h < 0) {
+			h += 1;
+		} else if (h > 1) {
+			h -= 1;
+		}
+	}
+
+	return [
+		h * 360,
+		s * 100,
+		v * 100
+	];
+};
+
+convert.rgb.hwb = function (rgb) {
+	var r = rgb[0];
+	var g = rgb[1];
+	var b = rgb[2];
+	var h = convert.rgb.hsl(rgb)[0];
+	var w = 1 / 255 * Math.min(r, Math.min(g, b));
+
+	b = 1 - 1 / 255 * Math.max(r, Math.max(g, b));
+
+	return [h, w * 100, b * 100];
+};
+
+convert.rgb.cmyk = function (rgb) {
+	var r = rgb[0] / 255;
+	var g = rgb[1] / 255;
+	var b = rgb[2] / 255;
+	var c;
+	var m;
+	var y;
+	var k;
+
+	k = Math.min(1 - r, 1 - g, 1 - b);
+	c = (1 - r - k) / (1 - k) || 0;
+	m = (1 - g - k) / (1 - k) || 0;
+	y = (1 - b - k) / (1 - k) || 0;
+
+	return [c * 100, m * 100, y * 100, k * 100];
+};
+
+/**
+ * See https://en.m.wikipedia.org/wiki/Euclidean_distance#Squared_Euclidean_distance
+ * */
+function comparativeDistance(x, y) {
+	return (
+		Math.pow(x[0] - y[0], 2) +
+		Math.pow(x[1] - y[1], 2) +
+		Math.pow(x[2] - y[2], 2)
+	);
+}
+
+convert.rgb.keyword = function (rgb) {
+	var reversed = reverseKeywords[rgb];
+	if (reversed) {
+		return reversed;
+	}
+
+	var currentClosestDistance = Infinity;
+	var currentClosestKeyword;
+
+	for (var keyword in cssKeywords) {
+		if (cssKeywords.hasOwnProperty(keyword)) {
+			var value = cssKeywords[keyword];
+
+			// Compute comparative distance
+			var distance = comparativeDistance(rgb, value);
+
+			// Check if its less, if so set as closest
+			if (distance < currentClosestDistance) {
+				currentClosestDistance = distance;
+				currentClosestKeyword = keyword;
+			}
+		}
+	}
+
+	return currentClosestKeyword;
+};
+
+convert.keyword.rgb = function (keyword) {
+	return cssKeywords[keyword];
+};
+
+convert.rgb.xyz = function (rgb) {
+	var r = rgb[0] / 255;
+	var g = rgb[1] / 255;
+	var b = rgb[2] / 255;
+
+	// assume sRGB
+	r = r > 0.04045 ? Math.pow(((r + 0.055) / 1.055), 2.4) : (r / 12.92);
+	g = g > 0.04045 ? Math.pow(((g + 0.055) / 1.055), 2.4) : (g / 12.92);
+	b = b > 0.04045 ? Math.pow(((b + 0.055) / 1.055), 2.4) : (b / 12.92);
+
+	var x = (r * 0.4124) + (g * 0.3576) + (b * 0.1805);
+	var y = (r * 0.2126) + (g * 0.7152) + (b * 0.0722);
+	var z = (r * 0.0193) + (g * 0.1192) + (b * 0.9505);
+
+	return [x * 100, y * 100, z * 100];
+};
+
+convert.rgb.lab = function (rgb) {
+	var xyz = convert.rgb.xyz(rgb);
+	var x = xyz[0];
+	var y = xyz[1];
+	var z = xyz[2];
+	var l;
+	var a;
+	var b;
+
+	x /= 95.047;
+	y /= 100;
+	z /= 108.883;
+
+	x = x > 0.008856 ? Math.pow(x, 1 / 3) : (7.787 * x) + (16 / 116);
+	y = y > 0.008856 ? Math.pow(y, 1 / 3) : (7.787 * y) + (16 / 116);
+	z = z > 0.008856 ? Math.pow(z, 1 / 3) : (7.787 * z) + (16 / 116);
+
+	l = (116 * y) - 16;
+	a = 500 * (x - y);
+	b = 200 * (y - z);
+
+	return [l, a, b];
+};
+
+convert.hsl.rgb = function (hsl) {
+	var h = hsl[0] / 360;
+	var s = hsl[1] / 100;
+	var l = hsl[2] / 100;
+	var t1;
+	var t2;
+	var t3;
+	var rgb;
+	var val;
+
+	if (s === 0) {
+		val = l * 255;
+		return [val, val, val];
+	}
+
+	if (l < 0.5) {
+		t2 = l * (1 + s);
+	} else {
+		t2 = l + s - l * s;
+	}
+
+	t1 = 2 * l - t2;
+
+	rgb = [0, 0, 0];
+	for (var i = 0; i < 3; i++) {
+		t3 = h + 1 / 3 * -(i - 1);
+		if (t3 < 0) {
+			t3++;
+		}
+		if (t3 > 1) {
+			t3--;
+		}
+
+		if (6 * t3 < 1) {
+			val = t1 + (t2 - t1) * 6 * t3;
+		} else if (2 * t3 < 1) {
+			val = t2;
+		} else if (3 * t3 < 2) {
+			val = t1 + (t2 - t1) * (2 / 3 - t3) * 6;
+		} else {
+			val = t1;
+		}
+
+		rgb[i] = val * 255;
+	}
+
+	return rgb;
+};
+
+convert.hsl.hsv = function (hsl) {
+	var h = hsl[0];
+	var s = hsl[1] / 100;
+	var l = hsl[2] / 100;
+	var smin = s;
+	var lmin = Math.max(l, 0.01);
+	var sv;
+	var v;
+
+	l *= 2;
+	s *= (l <= 1) ? l : 2 - l;
+	smin *= lmin <= 1 ? lmin : 2 - lmin;
+	v = (l + s) / 2;
+	sv = l === 0 ? (2 * smin) / (lmin + smin) : (2 * s) / (l + s);
+
+	return [h, sv * 100, v * 100];
+};
+
+convert.hsv.rgb = function (hsv) {
+	var h = hsv[0] / 60;
+	var s = hsv[1] / 100;
+	var v = hsv[2] / 100;
+	var hi = Math.floor(h) % 6;
+
+	var f = h - Math.floor(h);
+	var p = 255 * v * (1 - s);
+	var q = 255 * v * (1 - (s * f));
+	var t = 255 * v * (1 - (s * (1 - f)));
+	v *= 255;
+
+	switch (hi) {
+		case 0:
+			return [v, t, p];
+		case 1:
+			return [q, v, p];
+		case 2:
+			return [p, v, t];
+		case 3:
+			return [p, q, v];
+		case 4:
+			return [t, p, v];
+		case 5:
+			return [v, p, q];
+	}
+};
+
+convert.hsv.hsl = function (hsv) {
+	var h = hsv[0];
+	var s = hsv[1] / 100;
+	var v = hsv[2] / 100;
+	var vmin = Math.max(v, 0.01);
+	var lmin;
+	var sl;
+	var l;
+
+	l = (2 - s) * v;
+	lmin = (2 - s) * vmin;
+	sl = s * vmin;
+	sl /= (lmin <= 1) ? lmin : 2 - lmin;
+	sl = sl || 0;
+	l /= 2;
+
+	return [h, sl * 100, l * 100];
+};
+
+// http://dev.w3.org/csswg/css-color/#hwb-to-rgb
+convert.hwb.rgb = function (hwb) {
+	var h = hwb[0] / 360;
+	var wh = hwb[1] / 100;
+	var bl = hwb[2] / 100;
+	var ratio = wh + bl;
+	var i;
+	var v;
+	var f;
+	var n;
+
+	// wh + bl cant be > 1
+	if (ratio > 1) {
+		wh /= ratio;
+		bl /= ratio;
+	}
+
+	i = Math.floor(6 * h);
+	v = 1 - bl;
+	f = 6 * h - i;
+
+	if ((i & 0x01) !== 0) {
+		f = 1 - f;
+	}
+
+	n = wh + f * (v - wh); // linear interpolation
+
+	var r;
+	var g;
+	var b;
+	switch (i) {
+		default:
+		case 6:
+		case 0: r = v; g = n; b = wh; break;
+		case 1: r = n; g = v; b = wh; break;
+		case 2: r = wh; g = v; b = n; break;
+		case 3: r = wh; g = n; b = v; break;
+		case 4: r = n; g = wh; b = v; break;
+		case 5: r = v; g = wh; b = n; break;
+	}
+
+	return [r * 255, g * 255, b * 255];
+};
+
+convert.cmyk.rgb = function (cmyk) {
+	var c = cmyk[0] / 100;
+	var m = cmyk[1] / 100;
+	var y = cmyk[2] / 100;
+	var k = cmyk[3] / 100;
+	var r;
+	var g;
+	var b;
+
+	r = 1 - Math.min(1, c * (1 - k) + k);
+	g = 1 - Math.min(1, m * (1 - k) + k);
+	b = 1 - Math.min(1, y * (1 - k) + k);
+
+	return [r * 255, g * 255, b * 255];
+};
+
+convert.xyz.rgb = function (xyz) {
+	var x = xyz[0] / 100;
+	var y = xyz[1] / 100;
+	var z = xyz[2] / 100;
+	var r;
+	var g;
+	var b;
+
+	r = (x * 3.2406) + (y * -1.5372) + (z * -0.4986);
+	g = (x * -0.9689) + (y * 1.8758) + (z * 0.0415);
+	b = (x * 0.0557) + (y * -0.2040) + (z * 1.0570);
+
+	// assume sRGB
+	r = r > 0.0031308
+		? ((1.055 * Math.pow(r, 1.0 / 2.4)) - 0.055)
+		: r * 12.92;
+
+	g = g > 0.0031308
+		? ((1.055 * Math.pow(g, 1.0 / 2.4)) - 0.055)
+		: g * 12.92;
+
+	b = b > 0.0031308
+		? ((1.055 * Math.pow(b, 1.0 / 2.4)) - 0.055)
+		: b * 12.92;
+
+	r = Math.min(Math.max(0, r), 1);
+	g = Math.min(Math.max(0, g), 1);
+	b = Math.min(Math.max(0, b), 1);
+
+	return [r * 255, g * 255, b * 255];
+};
+
+convert.xyz.lab = function (xyz) {
+	var x = xyz[0];
+	var y = xyz[1];
+	var z = xyz[2];
+	var l;
+	var a;
+	var b;
+
+	x /= 95.047;
+	y /= 100;
+	z /= 108.883;
+
+	x = x > 0.008856 ? Math.pow(x, 1 / 3) : (7.787 * x) + (16 / 116);
+	y = y > 0.008856 ? Math.pow(y, 1 / 3) : (7.787 * y) + (16 / 116);
+	z = z > 0.008856 ? Math.pow(z, 1 / 3) : (7.787 * z) + (16 / 116);
+
+	l = (116 * y) - 16;
+	a = 500 * (x - y);
+	b = 200 * (y - z);
+
+	return [l, a, b];
+};
+
+convert.lab.xyz = function (lab) {
+	var l = lab[0];
+	var a = lab[1];
+	var b = lab[2];
+	var x;
+	var y;
+	var z;
+
+	y = (l + 16) / 116;
+	x = a / 500 + y;
+	z = y - b / 200;
+
+	var y2 = Math.pow(y, 3);
+	var x2 = Math.pow(x, 3);
+	var z2 = Math.pow(z, 3);
+	y = y2 > 0.008856 ? y2 : (y - 16 / 116) / 7.787;
+	x = x2 > 0.008856 ? x2 : (x - 16 / 116) / 7.787;
+	z = z2 > 0.008856 ? z2 : (z - 16 / 116) / 7.787;
+
+	x *= 95.047;
+	y *= 100;
+	z *= 108.883;
+
+	return [x, y, z];
+};
+
+convert.lab.lch = function (lab) {
+	var l = lab[0];
+	var a = lab[1];
+	var b = lab[2];
+	var hr;
+	var h;
+	var c;
+
+	hr = Math.atan2(b, a);
+	h = hr * 360 / 2 / Math.PI;
+
+	if (h < 0) {
+		h += 360;
+	}
+
+	c = Math.sqrt(a * a + b * b);
+
+	return [l, c, h];
+};
+
+convert.lch.lab = function (lch) {
+	var l = lch[0];
+	var c = lch[1];
+	var h = lch[2];
+	var a;
+	var b;
+	var hr;
+
+	hr = h / 360 * 2 * Math.PI;
+	a = c * Math.cos(hr);
+	b = c * Math.sin(hr);
+
+	return [l, a, b];
+};
+
+convert.rgb.ansi16 = function (args) {
+	var r = args[0];
+	var g = args[1];
+	var b = args[2];
+	var value = 1 in arguments ? arguments[1] : convert.rgb.hsv(args)[2]; // hsv -> ansi16 optimization
+
+	value = Math.round(value / 50);
+
+	if (value === 0) {
+		return 30;
+	}
+
+	var ansi = 30
+		+ ((Math.round(b / 255) << 2)
+		| (Math.round(g / 255) << 1)
+		| Math.round(r / 255));
+
+	if (value === 2) {
+		ansi += 60;
+	}
+
+	return ansi;
+};
+
+convert.hsv.ansi16 = function (args) {
+	// optimization here; we already know the value and don't need to get
+	// it converted for us.
+	return convert.rgb.ansi16(convert.hsv.rgb(args), args[2]);
+};
+
+convert.rgb.ansi256 = function (args) {
+	var r = args[0];
+	var g = args[1];
+	var b = args[2];
+
+	// we use the extended greyscale palette here, with the exception of
+	// black and white. normal palette only has 4 greyscale shades.
+	if (r === g && g === b) {
+		if (r < 8) {
+			return 16;
+		}
+
+		if (r > 248) {
+			return 231;
+		}
+
+		return Math.round(((r - 8) / 247) * 24) + 232;
+	}
+
+	var ansi = 16
+		+ (36 * Math.round(r / 255 * 5))
+		+ (6 * Math.round(g / 255 * 5))
+		+ Math.round(b / 255 * 5);
+
+	return ansi;
+};
+
+convert.ansi16.rgb = function (args) {
+	var color = args % 10;
+
+	// handle greyscale
+	if (color === 0 || color === 7) {
+		if (args > 50) {
+			color += 3.5;
+		}
+
+		color = color / 10.5 * 255;
+
+		return [color, color, color];
+	}
+
+	var mult = (~~(args > 50) + 1) * 0.5;
+	var r = ((color & 1) * mult) * 255;
+	var g = (((color >> 1) & 1) * mult) * 255;
+	var b = (((color >> 2) & 1) * mult) * 255;
+
+	return [r, g, b];
+};
+
+convert.ansi256.rgb = function (args) {
+	// handle greyscale
+	if (args >= 232) {
+		var c = (args - 232) * 10 + 8;
+		return [c, c, c];
+	}
+
+	args -= 16;
+
+	var rem;
+	var r = Math.floor(args / 36) / 5 * 255;
+	var g = Math.floor((rem = args % 36) / 6) / 5 * 255;
+	var b = (rem % 6) / 5 * 255;
+
+	return [r, g, b];
+};
+
+convert.rgb.hex = function (args) {
+	var integer = ((Math.round(args[0]) & 0xFF) << 16)
+		+ ((Math.round(args[1]) & 0xFF) << 8)
+		+ (Math.round(args[2]) & 0xFF);
+
+	var string = integer.toString(16).toUpperCase();
+	return '000000'.substring(string.length) + string;
+};
+
+convert.hex.rgb = function (args) {
+	var match = args.toString(16).match(/[a-f0-9]{6}|[a-f0-9]{3}/i);
+	if (!match) {
+		return [0, 0, 0];
+	}
+
+	var colorString = match[0];
+
+	if (match[0].length === 3) {
+		colorString = colorString.split('').map(function (char) {
+			return char + char;
+		}).join('');
+	}
+
+	var integer = parseInt(colorString, 16);
+	var r = (integer >> 16) & 0xFF;
+	var g = (integer >> 8) & 0xFF;
+	var b = integer & 0xFF;
+
+	return [r, g, b];
+};
+
+convert.rgb.hcg = function (rgb) {
+	var r = rgb[0] / 255;
+	var g = rgb[1] / 255;
+	var b = rgb[2] / 255;
+	var max = Math.max(Math.max(r, g), b);
+	var min = Math.min(Math.min(r, g), b);
+	var chroma = (max - min);
+	var grayscale;
+	var hue;
+
+	if (chroma < 1) {
+		grayscale = min / (1 - chroma);
+	} else {
+		grayscale = 0;
+	}
+
+	if (chroma <= 0) {
+		hue = 0;
+	} else
+	if (max === r) {
+		hue = ((g - b) / chroma) % 6;
+	} else
+	if (max === g) {
+		hue = 2 + (b - r) / chroma;
+	} else {
+		hue = 4 + (r - g) / chroma + 4;
+	}
+
+	hue /= 6;
+	hue %= 1;
+
+	return [hue * 360, chroma * 100, grayscale * 100];
+};
+
+convert.hsl.hcg = function (hsl) {
+	var s = hsl[1] / 100;
+	var l = hsl[2] / 100;
+	var c = 1;
+	var f = 0;
+
+	if (l < 0.5) {
+		c = 2.0 * s * l;
+	} else {
+		c = 2.0 * s * (1.0 - l);
+	}
+
+	if (c < 1.0) {
+		f = (l - 0.5 * c) / (1.0 - c);
+	}
+
+	return [hsl[0], c * 100, f * 100];
+};
+
+convert.hsv.hcg = function (hsv) {
+	var s = hsv[1] / 100;
+	var v = hsv[2] / 100;
+
+	var c = s * v;
+	var f = 0;
+
+	if (c < 1.0) {
+		f = (v - c) / (1 - c);
+	}
+
+	return [hsv[0], c * 100, f * 100];
+};
+
+convert.hcg.rgb = function (hcg) {
+	var h = hcg[0] / 360;
+	var c = hcg[1] / 100;
+	var g = hcg[2] / 100;
+
+	if (c === 0.0) {
+		return [g * 255, g * 255, g * 255];
+	}
+
+	var pure = [0, 0, 0];
+	var hi = (h % 1) * 6;
+	var v = hi % 1;
+	var w = 1 - v;
+	var mg = 0;
+
+	switch (Math.floor(hi)) {
+		case 0:
+			pure[0] = 1; pure[1] = v; pure[2] = 0; break;
+		case 1:
+			pure[0] = w; pure[1] = 1; pure[2] = 0; break;
+		case 2:
+			pure[0] = 0; pure[1] = 1; pure[2] = v; break;
+		case 3:
+			pure[0] = 0; pure[1] = w; pure[2] = 1; break;
+		case 4:
+			pure[0] = v; pure[1] = 0; pure[2] = 1; break;
+		default:
+			pure[0] = 1; pure[1] = 0; pure[2] = w;
+	}
+
+	mg = (1.0 - c) * g;
+
+	return [
+		(c * pure[0] + mg) * 255,
+		(c * pure[1] + mg) * 255,
+		(c * pure[2] + mg) * 255
+	];
+};
+
+convert.hcg.hsv = function (hcg) {
+	var c = hcg[1] / 100;
+	var g = hcg[2] / 100;
+
+	var v = c + g * (1.0 - c);
+	var f = 0;
+
+	if (v > 0.0) {
+		f = c / v;
+	}
+
+	return [hcg[0], f * 100, v * 100];
+};
+
+convert.hcg.hsl = function (hcg) {
+	var c = hcg[1] / 100;
+	var g = hcg[2] / 100;
+
+	var l = g * (1.0 - c) + 0.5 * c;
+	var s = 0;
+
+	if (l > 0.0 && l < 0.5) {
+		s = c / (2 * l);
+	} else
+	if (l >= 0.5 && l < 1.0) {
+		s = c / (2 * (1 - l));
+	}
+
+	return [hcg[0], s * 100, l * 100];
+};
+
+convert.hcg.hwb = function (hcg) {
+	var c = hcg[1] / 100;
+	var g = hcg[2] / 100;
+	var v = c + g * (1.0 - c);
+	return [hcg[0], (v - c) * 100, (1 - v) * 100];
+};
+
+convert.hwb.hcg = function (hwb) {
+	var w = hwb[1] / 100;
+	var b = hwb[2] / 100;
+	var v = 1 - b;
+	var c = v - w;
+	var g = 0;
+
+	if (c < 1) {
+		g = (v - c) / (1 - c);
+	}
+
+	return [hwb[0], c * 100, g * 100];
+};
+
+convert.apple.rgb = function (apple) {
+	return [(apple[0] / 65535) * 255, (apple[1] / 65535) * 255, (apple[2] / 65535) * 255];
+};
+
+convert.rgb.apple = function (rgb) {
+	return [(rgb[0] / 255) * 65535, (rgb[1] / 255) * 65535, (rgb[2] / 255) * 65535];
+};
+
+convert.gray.rgb = function (args) {
+	return [args[0] / 100 * 255, args[0] / 100 * 255, args[0] / 100 * 255];
+};
+
+convert.gray.hsl = convert.gray.hsv = function (args) {
+	return [0, 0, args[0]];
+};
+
+convert.gray.hwb = function (gray) {
+	return [0, 100, gray[0]];
+};
+
+convert.gray.cmyk = function (gray) {
+	return [0, 0, 0, gray[0]];
+};
+
+convert.gray.lab = function (gray) {
+	return [gray[0], 0, 0];
+};
+
+convert.gray.hex = function (gray) {
+	var val = Math.round(gray[0] / 100 * 255) & 0xFF;
+	var integer = (val << 16) + (val << 8) + val;
+
+	var string = integer.toString(16).toUpperCase();
+	return '000000'.substring(string.length) + string;
+};
+
+convert.rgb.gray = function (rgb) {
+	var val = (rgb[0] + rgb[1] + rgb[2]) / 3;
+	return [val / 255 * 100];
+};
+
+
+/***/ }),
+/* 153 */
+/*!******************************************!*\
+  !*** ./node_modules/color-name/index.js ***!
+  \******************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+module.exports = {
+	"aliceblue": [240, 248, 255],
+	"antiquewhite": [250, 235, 215],
+	"aqua": [0, 255, 255],
+	"aquamarine": [127, 255, 212],
+	"azure": [240, 255, 255],
+	"beige": [245, 245, 220],
+	"bisque": [255, 228, 196],
+	"black": [0, 0, 0],
+	"blanchedalmond": [255, 235, 205],
+	"blue": [0, 0, 255],
+	"blueviolet": [138, 43, 226],
+	"brown": [165, 42, 42],
+	"burlywood": [222, 184, 135],
+	"cadetblue": [95, 158, 160],
+	"chartreuse": [127, 255, 0],
+	"chocolate": [210, 105, 30],
+	"coral": [255, 127, 80],
+	"cornflowerblue": [100, 149, 237],
+	"cornsilk": [255, 248, 220],
+	"crimson": [220, 20, 60],
+	"cyan": [0, 255, 255],
+	"darkblue": [0, 0, 139],
+	"darkcyan": [0, 139, 139],
+	"darkgoldenrod": [184, 134, 11],
+	"darkgray": [169, 169, 169],
+	"darkgreen": [0, 100, 0],
+	"darkgrey": [169, 169, 169],
+	"darkkhaki": [189, 183, 107],
+	"darkmagenta": [139, 0, 139],
+	"darkolivegreen": [85, 107, 47],
+	"darkorange": [255, 140, 0],
+	"darkorchid": [153, 50, 204],
+	"darkred": [139, 0, 0],
+	"darksalmon": [233, 150, 122],
+	"darkseagreen": [143, 188, 143],
+	"darkslateblue": [72, 61, 139],
+	"darkslategray": [47, 79, 79],
+	"darkslategrey": [47, 79, 79],
+	"darkturquoise": [0, 206, 209],
+	"darkviolet": [148, 0, 211],
+	"deeppink": [255, 20, 147],
+	"deepskyblue": [0, 191, 255],
+	"dimgray": [105, 105, 105],
+	"dimgrey": [105, 105, 105],
+	"dodgerblue": [30, 144, 255],
+	"firebrick": [178, 34, 34],
+	"floralwhite": [255, 250, 240],
+	"forestgreen": [34, 139, 34],
+	"fuchsia": [255, 0, 255],
+	"gainsboro": [220, 220, 220],
+	"ghostwhite": [248, 248, 255],
+	"gold": [255, 215, 0],
+	"goldenrod": [218, 165, 32],
+	"gray": [128, 128, 128],
+	"green": [0, 128, 0],
+	"greenyellow": [173, 255, 47],
+	"grey": [128, 128, 128],
+	"honeydew": [240, 255, 240],
+	"hotpink": [255, 105, 180],
+	"indianred": [205, 92, 92],
+	"indigo": [75, 0, 130],
+	"ivory": [255, 255, 240],
+	"khaki": [240, 230, 140],
+	"lavender": [230, 230, 250],
+	"lavenderblush": [255, 240, 245],
+	"lawngreen": [124, 252, 0],
+	"lemonchiffon": [255, 250, 205],
+	"lightblue": [173, 216, 230],
+	"lightcoral": [240, 128, 128],
+	"lightcyan": [224, 255, 255],
+	"lightgoldenrodyellow": [250, 250, 210],
+	"lightgray": [211, 211, 211],
+	"lightgreen": [144, 238, 144],
+	"lightgrey": [211, 211, 211],
+	"lightpink": [255, 182, 193],
+	"lightsalmon": [255, 160, 122],
+	"lightseagreen": [32, 178, 170],
+	"lightskyblue": [135, 206, 250],
+	"lightslategray": [119, 136, 153],
+	"lightslategrey": [119, 136, 153],
+	"lightsteelblue": [176, 196, 222],
+	"lightyellow": [255, 255, 224],
+	"lime": [0, 255, 0],
+	"limegreen": [50, 205, 50],
+	"linen": [250, 240, 230],
+	"magenta": [255, 0, 255],
+	"maroon": [128, 0, 0],
+	"mediumaquamarine": [102, 205, 170],
+	"mediumblue": [0, 0, 205],
+	"mediumorchid": [186, 85, 211],
+	"mediumpurple": [147, 112, 219],
+	"mediumseagreen": [60, 179, 113],
+	"mediumslateblue": [123, 104, 238],
+	"mediumspringgreen": [0, 250, 154],
+	"mediumturquoise": [72, 209, 204],
+	"mediumvioletred": [199, 21, 133],
+	"midnightblue": [25, 25, 112],
+	"mintcream": [245, 255, 250],
+	"mistyrose": [255, 228, 225],
+	"moccasin": [255, 228, 181],
+	"navajowhite": [255, 222, 173],
+	"navy": [0, 0, 128],
+	"oldlace": [253, 245, 230],
+	"olive": [128, 128, 0],
+	"olivedrab": [107, 142, 35],
+	"orange": [255, 165, 0],
+	"orangered": [255, 69, 0],
+	"orchid": [218, 112, 214],
+	"palegoldenrod": [238, 232, 170],
+	"palegreen": [152, 251, 152],
+	"paleturquoise": [175, 238, 238],
+	"palevioletred": [219, 112, 147],
+	"papayawhip": [255, 239, 213],
+	"peachpuff": [255, 218, 185],
+	"peru": [205, 133, 63],
+	"pink": [255, 192, 203],
+	"plum": [221, 160, 221],
+	"powderblue": [176, 224, 230],
+	"purple": [128, 0, 128],
+	"rebeccapurple": [102, 51, 153],
+	"red": [255, 0, 0],
+	"rosybrown": [188, 143, 143],
+	"royalblue": [65, 105, 225],
+	"saddlebrown": [139, 69, 19],
+	"salmon": [250, 128, 114],
+	"sandybrown": [244, 164, 96],
+	"seagreen": [46, 139, 87],
+	"seashell": [255, 245, 238],
+	"sienna": [160, 82, 45],
+	"silver": [192, 192, 192],
+	"skyblue": [135, 206, 235],
+	"slateblue": [106, 90, 205],
+	"slategray": [112, 128, 144],
+	"slategrey": [112, 128, 144],
+	"snow": [255, 250, 250],
+	"springgreen": [0, 255, 127],
+	"steelblue": [70, 130, 180],
+	"tan": [210, 180, 140],
+	"teal": [0, 128, 128],
+	"thistle": [216, 191, 216],
+	"tomato": [255, 99, 71],
+	"turquoise": [64, 224, 208],
+	"violet": [238, 130, 238],
+	"wheat": [245, 222, 179],
+	"white": [255, 255, 255],
+	"whitesmoke": [245, 245, 245],
+	"yellow": [255, 255, 0],
+	"yellowgreen": [154, 205, 50]
+};
+
+
+/***/ }),
+/* 154 */
+/*!*********************************************!*\
+  !*** ./node_modules/color-convert/route.js ***!
+  \*********************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var conversions = __webpack_require__(/*! ./conversions */ 152);
+
+/*
+	this function routes a model to all other models.
+
+	all functions that are routed have a property `.conversion` attached
+	to the returned synthetic function. This property is an array
+	of strings, each with the steps in between the 'from' and 'to'
+	color models (inclusive).
+
+	conversions that are not possible simply are not included.
+*/
+
+function buildGraph() {
+	var graph = {};
+	// https://jsperf.com/object-keys-vs-for-in-with-closure/3
+	var models = Object.keys(conversions);
+
+	for (var len = models.length, i = 0; i < len; i++) {
+		graph[models[i]] = {
+			// http://jsperf.com/1-vs-infinity
+			// micro-opt, but this is simple.
+			distance: -1,
+			parent: null
+		};
+	}
+
+	return graph;
+}
+
+// https://en.wikipedia.org/wiki/Breadth-first_search
+function deriveBFS(fromModel) {
+	var graph = buildGraph();
+	var queue = [fromModel]; // unshift -> queue -> pop
+
+	graph[fromModel].distance = 0;
+
+	while (queue.length) {
+		var current = queue.pop();
+		var adjacents = Object.keys(conversions[current]);
+
+		for (var len = adjacents.length, i = 0; i < len; i++) {
+			var adjacent = adjacents[i];
+			var node = graph[adjacent];
+
+			if (node.distance === -1) {
+				node.distance = graph[current].distance + 1;
+				node.parent = current;
+				queue.unshift(adjacent);
+			}
+		}
+	}
+
+	return graph;
+}
+
+function link(from, to) {
+	return function (args) {
+		return to(from(args));
+	};
+}
+
+function wrapConversion(toModel, graph) {
+	var path = [graph[toModel].parent, toModel];
+	var fn = conversions[graph[toModel].parent][toModel];
+
+	var cur = graph[toModel].parent;
+	while (graph[cur].parent) {
+		path.unshift(graph[cur].parent);
+		fn = link(conversions[graph[cur].parent][cur], fn);
+		cur = graph[cur].parent;
+	}
+
+	fn.conversion = path;
+	return fn;
+}
+
+module.exports = function (fromModel) {
+	var graph = deriveBFS(fromModel);
+	var conversion = {};
+
+	var models = Object.keys(graph);
+	for (var len = models.length, i = 0; i < len; i++) {
+		var toModel = models[i];
+		var node = graph[toModel];
+
+		if (node.parent === null) {
+			// no possible conversion, or this node is the source model.
+			continue;
+		}
+
+		conversion[toModel] = wrapConversion(toModel, graph);
+	}
+
+	return conversion;
+};
+
+
+
+/***/ }),
+/* 155 */
+/*!************************************************!*\
+  !*** ./node_modules/supports-color/browser.js ***!
+  \************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+module.exports = {
+	stdout: false,
+	stderr: false
+};
+
+
+/***/ }),
+/* 156 */
+/*!*****************************************!*\
+  !*** ./node_modules/chalk/templates.js ***!
+  \*****************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+const TEMPLATE_REGEX = /(?:\\(u[a-f\d]{4}|x[a-f\d]{2}|.))|(?:\{(~)?(\w+(?:\([^)]*\))?(?:\.\w+(?:\([^)]*\))?)*)(?:[ \t]|(?=\r?\n)))|(\})|((?:.|[\r\n\f])+?)/gi;
+const STYLE_REGEX = /(?:^|\.)(\w+)(?:\(([^)]*)\))?/g;
+const STRING_REGEX = /^(['"])((?:\\.|(?!\1)[^\\])*)\1$/;
+const ESCAPE_REGEX = /\\(u[a-f\d]{4}|x[a-f\d]{2}|.)|([^\\])/gi;
+
+const ESCAPES = new Map([
+	['n', '\n'],
+	['r', '\r'],
+	['t', '\t'],
+	['b', '\b'],
+	['f', '\f'],
+	['v', '\v'],
+	['0', '\0'],
+	['\\', '\\'],
+	['e', '\u001B'],
+	['a', '\u0007']
+]);
+
+function unescape(c) {
+	if ((c[0] === 'u' && c.length === 5) || (c[0] === 'x' && c.length === 3)) {
+		return String.fromCharCode(parseInt(c.slice(1), 16));
+	}
+
+	return ESCAPES.get(c) || c;
+}
+
+function parseArguments(name, args) {
+	const results = [];
+	const chunks = args.trim().split(/\s*,\s*/g);
+	let matches;
+
+	for (const chunk of chunks) {
+		if (!isNaN(chunk)) {
+			results.push(Number(chunk));
+		} else if ((matches = chunk.match(STRING_REGEX))) {
+			results.push(matches[2].replace(ESCAPE_REGEX, (m, escape, chr) => escape ? unescape(escape) : chr));
+		} else {
+			throw new Error(`Invalid Chalk template style argument: ${chunk} (in style '${name}')`);
+		}
+	}
+
+	return results;
+}
+
+function parseStyle(style) {
+	STYLE_REGEX.lastIndex = 0;
+
+	const results = [];
+	let matches;
+
+	while ((matches = STYLE_REGEX.exec(style)) !== null) {
+		const name = matches[1];
+
+		if (matches[2]) {
+			const args = parseArguments(name, matches[2]);
+			results.push([name].concat(args));
+		} else {
+			results.push([name]);
+		}
+	}
+
+	return results;
+}
+
+function buildStyle(chalk, styles) {
+	const enabled = {};
+
+	for (const layer of styles) {
+		for (const style of layer.styles) {
+			enabled[style[0]] = layer.inverse ? null : style.slice(1);
+		}
+	}
+
+	let current = chalk;
+	for (const styleName of Object.keys(enabled)) {
+		if (Array.isArray(enabled[styleName])) {
+			if (!(styleName in current)) {
+				throw new Error(`Unknown Chalk style: ${styleName}`);
+			}
+
+			if (enabled[styleName].length > 0) {
+				current = current[styleName].apply(current, enabled[styleName]);
+			} else {
+				current = current[styleName];
+			}
+		}
+	}
+
+	return current;
+}
+
+module.exports = (chalk, tmp) => {
+	const styles = [];
+	const chunks = [];
+	let chunk = [];
+
+	// eslint-disable-next-line max-params
+	tmp.replace(TEMPLATE_REGEX, (m, escapeChar, inverse, style, close, chr) => {
+		if (escapeChar) {
+			chunk.push(unescape(escapeChar));
+		} else if (style) {
+			const str = chunk.join('');
+			chunk = [];
+			chunks.push(styles.length === 0 ? str : buildStyle(chalk, styles)(str));
+			styles.push({inverse, styles: parseStyle(style)});
+		} else if (close) {
+			if (styles.length === 0) {
+				throw new Error('Found extraneous } in Chalk template literal');
+			}
+
+			chunks.push(buildStyle(chalk, styles)(chunk.join('')));
+			chunk = [];
+			styles.pop();
+		} else {
+			chunk.push(chr);
+		}
+	});
+
+	chunks.push(chunk.join(''));
+
+	if (styles.length > 0) {
+		const errMsg = `Chalk template literal is missing ${styles.length} closing bracket${styles.length === 1 ? '' : 's'} (\`}\`)`;
+		throw new Error(errMsg);
+	}
+
+	return chunks.join('');
+};
+
+
+/***/ }),
+/* 157 */
 /*!*************************************************!*\
   !*** ./node_modules/@babel/parser/lib/index.js ***!
   \*************************************************/
@@ -43052,7 +49009,7 @@ exports.tokTypes = types$1;
 
 
 /***/ }),
-/* 136 */
+/* 158 */
 /*!*****************************************************************!*\
   !*** ./node_modules/@babel/helper-hoist-variables/lib/index.js ***!
   \*****************************************************************/
@@ -43120,7 +49077,7 @@ function hoistVariables(path, emit, kind = "var") {
 }
 
 /***/ }),
-/* 137 */
+/* 159 */
 /*!*************************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/evaluation.js ***!
   \*************************************************************/
@@ -43529,10 +49486,10 @@ function evaluate() {
     value: value
   };
 }
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../../../../webpack/buildin/global.js */ 118)))
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../../../../webpack/buildin/global.js */ 131)))
 
 /***/ }),
-/* 138 */
+/* 160 */
 /*!*************************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/conversion.js ***!
   \*************************************************************/
@@ -43553,7 +49510,7 @@ exports.arrowFunctionToExpression = arrowFunctionToExpression;
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var _helperFunctionName = __webpack_require__(/*! @babel/helper-function-name */ 139);
+var _helperFunctionName = __webpack_require__(/*! @babel/helper-function-name */ 161);
 
 const {
   arrowFunctionExpression,
@@ -44010,7 +49967,7 @@ function getScopeInformation(fnPath) {
 }
 
 /***/ }),
-/* 139 */
+/* 161 */
 /*!***************************************************************!*\
   !*** ./node_modules/@babel/helper-function-name/lib/index.js ***!
   \***************************************************************/
@@ -44025,9 +49982,9 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = _default;
 
-var _helperGetFunctionArity = __webpack_require__(/*! @babel/helper-get-function-arity */ 140);
+var _helperGetFunctionArity = __webpack_require__(/*! @babel/helper-get-function-arity */ 162);
 
-var _template = __webpack_require__(/*! @babel/template */ 141);
+var _template = __webpack_require__(/*! @babel/template */ 163);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
@@ -44208,7 +50165,7 @@ function _default({
 }
 
 /***/ }),
-/* 140 */
+/* 162 */
 /*!********************************************************************!*\
   !*** ./node_modules/@babel/helper-get-function-arity/lib/index.js ***!
   \********************************************************************/
@@ -44245,7 +50202,7 @@ function _default(node) {
 }
 
 /***/ }),
-/* 141 */
+/* 163 */
 /*!***************************************************!*\
   !*** ./node_modules/@babel/template/lib/index.js ***!
   \***************************************************/
@@ -44260,9 +50217,9 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = exports.program = exports.expression = exports.statements = exports.statement = exports.smart = void 0;
 
-var formatters = __webpack_require__(/*! ./formatters */ 142);
+var formatters = __webpack_require__(/*! ./formatters */ 164);
 
-var _builder = __webpack_require__(/*! ./builder */ 143);
+var _builder = __webpack_require__(/*! ./builder */ 165);
 
 const smart = (0, _builder.default)(formatters.smart);
 exports.smart = smart;
@@ -44287,7 +50244,7 @@ var _default = Object.assign(smart.bind(undefined), {
 exports.default = _default;
 
 /***/ }),
-/* 142 */
+/* 164 */
 /*!********************************************************!*\
   !*** ./node_modules/@babel/template/lib/formatters.js ***!
   \********************************************************/
@@ -44368,7 +50325,7 @@ const program = {
 exports.program = program;
 
 /***/ }),
-/* 143 */
+/* 165 */
 /*!*****************************************************!*\
   !*** ./node_modules/@babel/template/lib/builder.js ***!
   \*****************************************************/
@@ -44383,11 +50340,11 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = createTemplateBuilder;
 
-var _options = __webpack_require__(/*! ./options */ 144);
+var _options = __webpack_require__(/*! ./options */ 166);
 
-var _string = __webpack_require__(/*! ./string */ 145);
+var _string = __webpack_require__(/*! ./string */ 167);
 
-var _literal = __webpack_require__(/*! ./literal */ 148);
+var _literal = __webpack_require__(/*! ./literal */ 170);
 
 const NO_PLACEHOLDER = (0, _options.validate)({
   placeholderPattern: false
@@ -44459,7 +50416,7 @@ function extendedTrace(fn) {
 }
 
 /***/ }),
-/* 144 */
+/* 166 */
 /*!*****************************************************!*\
   !*** ./node_modules/@babel/template/lib/options.js ***!
   \*****************************************************/
@@ -44552,7 +50509,7 @@ function normalizeReplacements(replacements) {
 }
 
 /***/ }),
-/* 145 */
+/* 167 */
 /*!****************************************************!*\
   !*** ./node_modules/@babel/template/lib/string.js ***!
   \****************************************************/
@@ -44567,11 +50524,11 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = stringTemplate;
 
-var _options = __webpack_require__(/*! ./options */ 144);
+var _options = __webpack_require__(/*! ./options */ 166);
 
-var _parse = __webpack_require__(/*! ./parse */ 146);
+var _parse = __webpack_require__(/*! ./parse */ 168);
 
-var _populate = __webpack_require__(/*! ./populate */ 147);
+var _populate = __webpack_require__(/*! ./populate */ 169);
 
 function stringTemplate(formatter, code, opts) {
   code = formatter.code(code);
@@ -44584,7 +50541,7 @@ function stringTemplate(formatter, code, opts) {
 }
 
 /***/ }),
-/* 146 */
+/* 168 */
 /*!***************************************************!*\
   !*** ./node_modules/@babel/template/lib/parse.js ***!
   \***************************************************/
@@ -44601,9 +50558,9 @@ exports.default = parseAndBuildMetadata;
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var _parser = __webpack_require__(/*! @babel/parser */ 135);
+var _parser = __webpack_require__(/*! @babel/parser */ 157);
 
-var _codeFrame = __webpack_require__(/*! @babel/code-frame */ 131);
+var _codeFrame = __webpack_require__(/*! @babel/code-frame */ 144);
 
 const {
   isCallExpression,
@@ -44782,7 +50739,7 @@ function parseWithCodeFrame(code, parserOpts, syntacticPlaceholders) {
 }
 
 /***/ }),
-/* 147 */
+/* 169 */
 /*!******************************************************!*\
   !*** ./node_modules/@babel/template/lib/populate.js ***!
   \******************************************************/
@@ -44927,7 +50884,7 @@ function applyReplacement(placeholder, ast, replacement) {
 }
 
 /***/ }),
-/* 148 */
+/* 170 */
 /*!*****************************************************!*\
   !*** ./node_modules/@babel/template/lib/literal.js ***!
   \*****************************************************/
@@ -44942,11 +50899,11 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = literalTemplate;
 
-var _options = __webpack_require__(/*! ./options */ 144);
+var _options = __webpack_require__(/*! ./options */ 166);
 
-var _parse = __webpack_require__(/*! ./parse */ 146);
+var _parse = __webpack_require__(/*! ./parse */ 168);
 
-var _populate = __webpack_require__(/*! ./populate */ 147);
+var _populate = __webpack_require__(/*! ./populate */ 169);
 
 function literalTemplate(formatter, tpl, opts) {
   const {
@@ -45017,7 +50974,7 @@ function buildTemplateCode(tpl, prefix) {
 }
 
 /***/ }),
-/* 149 */
+/* 171 */
 /*!****************************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/introspection.js ***!
   \****************************************************************/
@@ -45463,7 +51420,7 @@ function isInStrictMode() {
 }
 
 /***/ }),
-/* 150 */
+/* 172 */
 /*!**********************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/context.js ***!
   \**********************************************************/
@@ -45726,7 +51683,7 @@ function _getQueueContexts() {
 }
 
 /***/ }),
-/* 151 */
+/* 173 */
 /*!**********************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/removal.js ***!
   \**********************************************************/
@@ -45746,9 +51703,9 @@ exports._remove = _remove;
 exports._markRemoved = _markRemoved;
 exports._assertUnremoved = _assertUnremoved;
 
-var _removalHooks = __webpack_require__(/*! ./lib/removal-hooks */ 152);
+var _removalHooks = __webpack_require__(/*! ./lib/removal-hooks */ 174);
 
-var _cache = __webpack_require__(/*! ../cache */ 99);
+var _cache = __webpack_require__(/*! ../cache */ 102);
 
 var _index = __webpack_require__(/*! ./index */ 6);
 
@@ -45809,7 +51766,7 @@ function _assertUnremoved() {
 }
 
 /***/ }),
-/* 152 */
+/* 174 */
 /*!********************************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/lib/removal-hooks.js ***!
   \********************************************************************/
@@ -45857,7 +51814,7 @@ const hooks = [function (self, parent) {
 exports.hooks = hooks;
 
 /***/ }),
-/* 153 */
+/* 175 */
 /*!***************************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/modification.js ***!
   \***************************************************************/
@@ -45881,9 +51838,9 @@ exports.unshiftContainer = unshiftContainer;
 exports.pushContainer = pushContainer;
 exports.hoist = hoist;
 
-var _cache = __webpack_require__(/*! ../cache */ 99);
+var _cache = __webpack_require__(/*! ../cache */ 102);
 
-var _hoister = __webpack_require__(/*! ./lib/hoister */ 154);
+var _hoister = __webpack_require__(/*! ./lib/hoister */ 176);
 
 var _index = __webpack_require__(/*! ./index */ 6);
 
@@ -46099,7 +52056,7 @@ function hoist(scope = this.scope) {
 }
 
 /***/ }),
-/* 154 */
+/* 176 */
 /*!**************************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/lib/hoister.js ***!
   \**************************************************************/
@@ -46315,7 +52272,7 @@ class PathHoister {
 exports.default = PathHoister;
 
 /***/ }),
-/* 155 */
+/* 177 */
 /*!*********************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/family.js ***!
   \*********************************************************/
@@ -46732,7 +52689,7 @@ function getOuterBindingIdentifierPaths(duplicates) {
 }
 
 /***/ }),
-/* 156 */
+/* 178 */
 /*!***********************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/path/comments.js ***!
   \***********************************************************/
@@ -46784,7 +52741,7 @@ function addComments(type, comments) {
 }
 
 /***/ }),
-/* 157 */
+/* 179 */
 /*!******************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/visitors.js ***!
   \******************************************************/
@@ -47036,7 +52993,7 @@ function mergePair(dest, src) {
 }
 
 /***/ }),
-/* 158 */
+/* 180 */
 /*!*************************************************!*\
   !*** ./node_modules/@babel/traverse/lib/hub.js ***!
   \*************************************************/
@@ -47069,7 +53026,2017 @@ class Hub {
 exports.default = Hub;
 
 /***/ }),
-/* 159 */
+/* 181 */
+/*!****************************************************!*\
+  !*** ./node_modules/@babel/helpers/lib/helpers.js ***!
+  \****************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+
+var _template = __webpack_require__(/*! @babel/template */ 163);
+
+var generated = __webpack_require__(/*! ./helpers-generated */ 182);
+
+const helpers = Object.assign({
+  __proto__: null
+}, generated);
+var _default = helpers;
+exports.default = _default;
+
+const helper = minVersion => tpl => ({
+  minVersion,
+  ast: () => _template.default.program.ast(tpl)
+});
+
+helpers.asyncIterator = helper("7.0.0-beta.0")`
+  export default function _asyncIterator(iterable) {
+    var method;
+    if (typeof Symbol !== "undefined") {
+      if (Symbol.asyncIterator) method = iterable[Symbol.asyncIterator];
+      if (method == null && Symbol.iterator) method = iterable[Symbol.iterator];
+    }
+    if (method == null) method = iterable["@@asyncIterator"];
+    if (method == null) method = iterable["@@iterator"]
+    if (method == null) throw new TypeError("Object is not async iterable");
+    return method.call(iterable);
+  }
+`;
+helpers.AwaitValue = helper("7.0.0-beta.0")`
+  export default function _AwaitValue(value) {
+    this.wrapped = value;
+  }
+`;
+helpers.AsyncGenerator = helper("7.0.0-beta.0")`
+  import AwaitValue from "AwaitValue";
+
+  export default function AsyncGenerator(gen) {
+    var front, back;
+
+    function send(key, arg) {
+      return new Promise(function (resolve, reject) {
+        var request = {
+          key: key,
+          arg: arg,
+          resolve: resolve,
+          reject: reject,
+          next: null,
+        };
+
+        if (back) {
+          back = back.next = request;
+        } else {
+          front = back = request;
+          resume(key, arg);
+        }
+      });
+    }
+
+    function resume(key, arg) {
+      try {
+        var result = gen[key](arg)
+        var value = result.value;
+        var wrappedAwait = value instanceof AwaitValue;
+
+        Promise.resolve(wrappedAwait ? value.wrapped : value).then(
+          function (arg) {
+            if (wrappedAwait) {
+              resume(key === "return" ? "return" : "next", arg);
+              return
+            }
+
+            settle(result.done ? "return" : "normal", arg);
+          },
+          function (err) { resume("throw", err); });
+      } catch (err) {
+        settle("throw", err);
+      }
+    }
+
+    function settle(type, value) {
+      switch (type) {
+        case "return":
+          front.resolve({ value: value, done: true });
+          break;
+        case "throw":
+          front.reject(value);
+          break;
+        default:
+          front.resolve({ value: value, done: false });
+          break;
+      }
+
+      front = front.next;
+      if (front) {
+        resume(front.key, front.arg);
+      } else {
+        back = null;
+      }
+    }
+
+    this._invoke = send;
+
+    // Hide "return" method if generator return is not supported
+    if (typeof gen.return !== "function") {
+      this.return = undefined;
+    }
+  }
+
+  AsyncGenerator.prototype[typeof Symbol === "function" && Symbol.asyncIterator || "@@asyncIterator"] = function () { return this; };
+
+  AsyncGenerator.prototype.next = function (arg) { return this._invoke("next", arg); };
+  AsyncGenerator.prototype.throw = function (arg) { return this._invoke("throw", arg); };
+  AsyncGenerator.prototype.return = function (arg) { return this._invoke("return", arg); };
+`;
+helpers.wrapAsyncGenerator = helper("7.0.0-beta.0")`
+  import AsyncGenerator from "AsyncGenerator";
+
+  export default function _wrapAsyncGenerator(fn) {
+    return function () {
+      return new AsyncGenerator(fn.apply(this, arguments));
+    };
+  }
+`;
+helpers.awaitAsyncGenerator = helper("7.0.0-beta.0")`
+  import AwaitValue from "AwaitValue";
+
+  export default function _awaitAsyncGenerator(value) {
+    return new AwaitValue(value);
+  }
+`;
+helpers.asyncGeneratorDelegate = helper("7.0.0-beta.0")`
+  export default function _asyncGeneratorDelegate(inner, awaitWrap) {
+    var iter = {}, waiting = false;
+
+    function pump(key, value) {
+      waiting = true;
+      value = new Promise(function (resolve) { resolve(inner[key](value)); });
+      return { done: false, value: awaitWrap(value) };
+    };
+
+    iter[typeof Symbol !== "undefined" && Symbol.iterator || "@@iterator"] = function () { return this; };
+
+    iter.next = function (value) {
+      if (waiting) {
+        waiting = false;
+        return value;
+      }
+      return pump("next", value);
+    };
+
+    if (typeof inner.throw === "function") {
+      iter.throw = function (value) {
+        if (waiting) {
+          waiting = false;
+          throw value;
+        }
+        return pump("throw", value);
+      };
+    }
+
+    if (typeof inner.return === "function") {
+      iter.return = function (value) {
+        if (waiting) {
+          waiting = false;
+          return value;
+        }
+        return pump("return", value);
+      };
+    }
+
+    return iter;
+  }
+`;
+helpers.asyncToGenerator = helper("7.0.0-beta.0")`
+  function asyncGeneratorStep(gen, resolve, reject, _next, _throw, key, arg) {
+    try {
+      var info = gen[key](arg);
+      var value = info.value;
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    if (info.done) {
+      resolve(value);
+    } else {
+      Promise.resolve(value).then(_next, _throw);
+    }
+  }
+
+  export default function _asyncToGenerator(fn) {
+    return function () {
+      var self = this, args = arguments;
+      return new Promise(function (resolve, reject) {
+        var gen = fn.apply(self, args);
+        function _next(value) {
+          asyncGeneratorStep(gen, resolve, reject, _next, _throw, "next", value);
+        }
+        function _throw(err) {
+          asyncGeneratorStep(gen, resolve, reject, _next, _throw, "throw", err);
+        }
+
+        _next(undefined);
+      });
+    };
+  }
+`;
+helpers.classCallCheck = helper("7.0.0-beta.0")`
+  export default function _classCallCheck(instance, Constructor) {
+    if (!(instance instanceof Constructor)) {
+      throw new TypeError("Cannot call a class as a function");
+    }
+  }
+`;
+helpers.createClass = helper("7.0.0-beta.0")`
+  function _defineProperties(target, props) {
+    for (var i = 0; i < props.length; i ++) {
+      var descriptor = props[i];
+      descriptor.enumerable = descriptor.enumerable || false;
+      descriptor.configurable = true;
+      if ("value" in descriptor) descriptor.writable = true;
+      Object.defineProperty(target, descriptor.key, descriptor);
+    }
+  }
+
+  export default function _createClass(Constructor, protoProps, staticProps) {
+    if (protoProps) _defineProperties(Constructor.prototype, protoProps);
+    if (staticProps) _defineProperties(Constructor, staticProps);
+    return Constructor;
+  }
+`;
+helpers.defineEnumerableProperties = helper("7.0.0-beta.0")`
+  export default function _defineEnumerableProperties(obj, descs) {
+    for (var key in descs) {
+      var desc = descs[key];
+      desc.configurable = desc.enumerable = true;
+      if ("value" in desc) desc.writable = true;
+      Object.defineProperty(obj, key, desc);
+    }
+
+    // Symbols are not enumerated over by for-in loops. If native
+    // Symbols are available, fetch all of the descs object's own
+    // symbol properties and define them on our target object too.
+    if (Object.getOwnPropertySymbols) {
+      var objectSymbols = Object.getOwnPropertySymbols(descs);
+      for (var i = 0; i < objectSymbols.length; i++) {
+        var sym = objectSymbols[i];
+        var desc = descs[sym];
+        desc.configurable = desc.enumerable = true;
+        if ("value" in desc) desc.writable = true;
+        Object.defineProperty(obj, sym, desc);
+      }
+    }
+    return obj;
+  }
+`;
+helpers.defaults = helper("7.0.0-beta.0")`
+  export default function _defaults(obj, defaults) {
+    var keys = Object.getOwnPropertyNames(defaults);
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      var value = Object.getOwnPropertyDescriptor(defaults, key);
+      if (value && value.configurable && obj[key] === undefined) {
+        Object.defineProperty(obj, key, value);
+      }
+    }
+    return obj;
+  }
+`;
+helpers.defineProperty = helper("7.0.0-beta.0")`
+  export default function _defineProperty(obj, key, value) {
+    // Shortcircuit the slow defineProperty path when possible.
+    // We are trying to avoid issues where setters defined on the
+    // prototype cause side effects under the fast path of simple
+    // assignment. By checking for existence of the property with
+    // the in operator, we can optimize most of this overhead away.
+    if (key in obj) {
+      Object.defineProperty(obj, key, {
+        value: value,
+        enumerable: true,
+        configurable: true,
+        writable: true
+      });
+    } else {
+      obj[key] = value;
+    }
+    return obj;
+  }
+`;
+helpers.extends = helper("7.0.0-beta.0")`
+  export default function _extends() {
+    _extends = Object.assign || function (target) {
+      for (var i = 1; i < arguments.length; i++) {
+        var source = arguments[i];
+        for (var key in source) {
+          if (Object.prototype.hasOwnProperty.call(source, key)) {
+            target[key] = source[key];
+          }
+        }
+      }
+      return target;
+    };
+
+    return _extends.apply(this, arguments);
+  }
+`;
+helpers.objectSpread = helper("7.0.0-beta.0")`
+  import defineProperty from "defineProperty";
+
+  export default function _objectSpread(target) {
+    for (var i = 1; i < arguments.length; i++) {
+      var source = (arguments[i] != null) ? Object(arguments[i]) : {};
+      var ownKeys = Object.keys(source);
+      if (typeof Object.getOwnPropertySymbols === 'function') {
+        ownKeys.push.apply(ownKeys, Object.getOwnPropertySymbols(source).filter(function(sym) {
+          return Object.getOwnPropertyDescriptor(source, sym).enumerable;
+        }));
+      }
+      ownKeys.forEach(function(key) {
+        defineProperty(target, key, source[key]);
+      });
+    }
+    return target;
+  }
+`;
+helpers.inherits = helper("7.0.0-beta.0")`
+  import setPrototypeOf from "setPrototypeOf";
+
+  export default function _inherits(subClass, superClass) {
+    if (typeof superClass !== "function" && superClass !== null) {
+      throw new TypeError("Super expression must either be null or a function");
+    }
+    subClass.prototype = Object.create(superClass && superClass.prototype, {
+      constructor: {
+        value: subClass,
+        writable: true,
+        configurable: true
+      }
+    });
+    if (superClass) setPrototypeOf(subClass, superClass);
+  }
+`;
+helpers.inheritsLoose = helper("7.0.0-beta.0")`
+  import setPrototypeOf from "setPrototypeOf";
+
+  export default function _inheritsLoose(subClass, superClass) {
+    subClass.prototype = Object.create(superClass.prototype);
+    subClass.prototype.constructor = subClass;
+    setPrototypeOf(subClass, superClass);
+  }
+`;
+helpers.getPrototypeOf = helper("7.0.0-beta.0")`
+  export default function _getPrototypeOf(o) {
+    _getPrototypeOf = Object.setPrototypeOf
+      ? Object.getPrototypeOf
+      : function _getPrototypeOf(o) {
+          return o.__proto__ || Object.getPrototypeOf(o);
+        };
+    return _getPrototypeOf(o);
+  }
+`;
+helpers.setPrototypeOf = helper("7.0.0-beta.0")`
+  export default function _setPrototypeOf(o, p) {
+    _setPrototypeOf = Object.setPrototypeOf || function _setPrototypeOf(o, p) {
+      o.__proto__ = p;
+      return o;
+    };
+    return _setPrototypeOf(o, p);
+  }
+`;
+helpers.isNativeReflectConstruct = helper("7.9.0")`
+  export default function _isNativeReflectConstruct() {
+    if (typeof Reflect === "undefined" || !Reflect.construct) return false;
+
+    // core-js@3
+    if (Reflect.construct.sham) return false;
+
+    // Proxy can't be polyfilled. Every browser implemented
+    // proxies before or at the same time as Reflect.construct,
+    // so if they support Proxy they also support Reflect.construct.
+    if (typeof Proxy === "function") return true;
+
+    // Since Reflect.construct can't be properly polyfilled, some
+    // implementations (e.g. core-js@2) don't set the correct internal slots.
+    // Those polyfills don't allow us to subclass built-ins, so we need to
+    // use our fallback implementation.
+    try {
+      // If the internal slots aren't set, this throws an error similar to
+      //   TypeError: this is not a Boolean object.
+
+      Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function() {}));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+`;
+helpers.construct = helper("7.0.0-beta.0")`
+  import setPrototypeOf from "setPrototypeOf";
+  import isNativeReflectConstruct from "isNativeReflectConstruct";
+
+  export default function _construct(Parent, args, Class) {
+    if (isNativeReflectConstruct()) {
+      _construct = Reflect.construct;
+    } else {
+      // NOTE: If Parent !== Class, the correct __proto__ is set *after*
+      //       calling the constructor.
+      _construct = function _construct(Parent, args, Class) {
+        var a = [null];
+        a.push.apply(a, args);
+        var Constructor = Function.bind.apply(Parent, a);
+        var instance = new Constructor();
+        if (Class) setPrototypeOf(instance, Class.prototype);
+        return instance;
+      };
+    }
+    // Avoid issues with Class being present but undefined when it wasn't
+    // present in the original call.
+    return _construct.apply(null, arguments);
+  }
+`;
+helpers.isNativeFunction = helper("7.0.0-beta.0")`
+  export default function _isNativeFunction(fn) {
+    // Note: This function returns "true" for core-js functions.
+    return Function.toString.call(fn).indexOf("[native code]") !== -1;
+  }
+`;
+helpers.wrapNativeSuper = helper("7.0.0-beta.0")`
+  import getPrototypeOf from "getPrototypeOf";
+  import setPrototypeOf from "setPrototypeOf";
+  import isNativeFunction from "isNativeFunction";
+  import construct from "construct";
+
+  export default function _wrapNativeSuper(Class) {
+    var _cache = typeof Map === "function" ? new Map() : undefined;
+
+    _wrapNativeSuper = function _wrapNativeSuper(Class) {
+      if (Class === null || !isNativeFunction(Class)) return Class;
+      if (typeof Class !== "function") {
+        throw new TypeError("Super expression must either be null or a function");
+      }
+      if (typeof _cache !== "undefined") {
+        if (_cache.has(Class)) return _cache.get(Class);
+        _cache.set(Class, Wrapper);
+      }
+      function Wrapper() {
+        return construct(Class, arguments, getPrototypeOf(this).constructor)
+      }
+      Wrapper.prototype = Object.create(Class.prototype, {
+        constructor: {
+          value: Wrapper,
+          enumerable: false,
+          writable: true,
+          configurable: true,
+        }
+      });
+
+      return setPrototypeOf(Wrapper, Class);
+    }
+
+    return _wrapNativeSuper(Class)
+  }
+`;
+helpers.instanceof = helper("7.0.0-beta.0")`
+  export default function _instanceof(left, right) {
+    if (right != null && typeof Symbol !== "undefined" && right[Symbol.hasInstance]) {
+      return !!right[Symbol.hasInstance](left);
+    } else {
+      return left instanceof right;
+    }
+  }
+`;
+helpers.interopRequireDefault = helper("7.0.0-beta.0")`
+  export default function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+  }
+`;
+helpers.interopRequireWildcard = helper("7.14.0")`
+  function _getRequireWildcardCache(nodeInterop) {
+    if (typeof WeakMap !== "function") return null;
+
+    var cacheBabelInterop = new WeakMap();
+    var cacheNodeInterop = new WeakMap();
+    return (_getRequireWildcardCache = function (nodeInterop) {
+      return nodeInterop ? cacheNodeInterop : cacheBabelInterop;
+    })(nodeInterop);
+  }
+
+  export default function _interopRequireWildcard(obj, nodeInterop) {
+    if (!nodeInterop && obj && obj.__esModule) {
+      return obj;
+    }
+
+    if (obj === null || (typeof obj !== "object" && typeof obj !== "function")) {
+      return { default: obj }
+    }
+
+    var cache = _getRequireWildcardCache(nodeInterop);
+    if (cache && cache.has(obj)) {
+      return cache.get(obj);
+    }
+
+    var newObj = {};
+    var hasPropertyDescriptor = Object.defineProperty && Object.getOwnPropertyDescriptor;
+    for (var key in obj) {
+      if (key !== "default" && Object.prototype.hasOwnProperty.call(obj, key)) {
+        var desc = hasPropertyDescriptor
+          ? Object.getOwnPropertyDescriptor(obj, key)
+          : null;
+        if (desc && (desc.get || desc.set)) {
+          Object.defineProperty(newObj, key, desc);
+        } else {
+          newObj[key] = obj[key];
+        }
+      }
+    }
+    newObj.default = obj;
+    if (cache) {
+      cache.set(obj, newObj);
+    }
+    return newObj;
+  }
+`;
+helpers.newArrowCheck = helper("7.0.0-beta.0")`
+  export default function _newArrowCheck(innerThis, boundThis) {
+    if (innerThis !== boundThis) {
+      throw new TypeError("Cannot instantiate an arrow function");
+    }
+  }
+`;
+helpers.objectDestructuringEmpty = helper("7.0.0-beta.0")`
+  export default function _objectDestructuringEmpty(obj) {
+    if (obj == null) throw new TypeError("Cannot destructure undefined");
+  }
+`;
+helpers.objectWithoutPropertiesLoose = helper("7.0.0-beta.0")`
+  export default function _objectWithoutPropertiesLoose(source, excluded) {
+    if (source == null) return {};
+
+    var target = {};
+    var sourceKeys = Object.keys(source);
+    var key, i;
+
+    for (i = 0; i < sourceKeys.length; i++) {
+      key = sourceKeys[i];
+      if (excluded.indexOf(key) >= 0) continue;
+      target[key] = source[key];
+    }
+
+    return target;
+  }
+`;
+helpers.objectWithoutProperties = helper("7.0.0-beta.0")`
+  import objectWithoutPropertiesLoose from "objectWithoutPropertiesLoose";
+
+  export default function _objectWithoutProperties(source, excluded) {
+    if (source == null) return {};
+
+    var target = objectWithoutPropertiesLoose(source, excluded);
+    var key, i;
+
+    if (Object.getOwnPropertySymbols) {
+      var sourceSymbolKeys = Object.getOwnPropertySymbols(source);
+      for (i = 0; i < sourceSymbolKeys.length; i++) {
+        key = sourceSymbolKeys[i];
+        if (excluded.indexOf(key) >= 0) continue;
+        if (!Object.prototype.propertyIsEnumerable.call(source, key)) continue;
+        target[key] = source[key];
+      }
+    }
+
+    return target;
+  }
+`;
+helpers.assertThisInitialized = helper("7.0.0-beta.0")`
+  export default function _assertThisInitialized(self) {
+    if (self === void 0) {
+      throw new ReferenceError("this hasn't been initialised - super() hasn't been called");
+    }
+    return self;
+  }
+`;
+helpers.possibleConstructorReturn = helper("7.0.0-beta.0")`
+  import assertThisInitialized from "assertThisInitialized";
+
+  export default function _possibleConstructorReturn(self, call) {
+    if (call && (typeof call === "object" || typeof call === "function")) {
+      return call;
+    } else if (call !== void 0) {
+      throw new TypeError("Derived constructors may only return object or undefined");
+    }
+
+    return assertThisInitialized(self);
+  }
+`;
+helpers.createSuper = helper("7.9.0")`
+  import getPrototypeOf from "getPrototypeOf";
+  import isNativeReflectConstruct from "isNativeReflectConstruct";
+  import possibleConstructorReturn from "possibleConstructorReturn";
+
+  export default function _createSuper(Derived) {
+    var hasNativeReflectConstruct = isNativeReflectConstruct();
+
+    return function _createSuperInternal() {
+      var Super = getPrototypeOf(Derived), result;
+      if (hasNativeReflectConstruct) {
+        // NOTE: This doesn't work if this.__proto__.constructor has been modified.
+        var NewTarget = getPrototypeOf(this).constructor;
+        result = Reflect.construct(Super, arguments, NewTarget);
+      } else {
+        result = Super.apply(this, arguments);
+      }
+      return possibleConstructorReturn(this, result);
+    }
+  }
+ `;
+helpers.superPropBase = helper("7.0.0-beta.0")`
+  import getPrototypeOf from "getPrototypeOf";
+
+  export default function _superPropBase(object, property) {
+    // Yes, this throws if object is null to being with, that's on purpose.
+    while (!Object.prototype.hasOwnProperty.call(object, property)) {
+      object = getPrototypeOf(object);
+      if (object === null) break;
+    }
+    return object;
+  }
+`;
+helpers.get = helper("7.0.0-beta.0")`
+  import superPropBase from "superPropBase";
+
+  export default function _get(target, property, receiver) {
+    if (typeof Reflect !== "undefined" && Reflect.get) {
+      _get = Reflect.get;
+    } else {
+      _get = function _get(target, property, receiver) {
+        var base = superPropBase(target, property);
+
+        if (!base) return;
+
+        var desc = Object.getOwnPropertyDescriptor(base, property);
+        if (desc.get) {
+          return desc.get.call(receiver);
+        }
+
+        return desc.value;
+      };
+    }
+    return _get(target, property, receiver || target);
+  }
+`;
+helpers.set = helper("7.0.0-beta.0")`
+  import superPropBase from "superPropBase";
+  import defineProperty from "defineProperty";
+
+  function set(target, property, value, receiver) {
+    if (typeof Reflect !== "undefined" && Reflect.set) {
+      set = Reflect.set;
+    } else {
+      set = function set(target, property, value, receiver) {
+        var base = superPropBase(target, property);
+        var desc;
+
+        if (base) {
+          desc = Object.getOwnPropertyDescriptor(base, property);
+          if (desc.set) {
+            desc.set.call(receiver, value);
+            return true;
+          } else if (!desc.writable) {
+            // Both getter and non-writable fall into this.
+            return false;
+          }
+        }
+
+        // Without a super that defines the property, spec boils down to
+        // "define on receiver" for some reason.
+        desc = Object.getOwnPropertyDescriptor(receiver, property);
+        if (desc) {
+          if (!desc.writable) {
+            // Setter, getter, and non-writable fall into this.
+            return false;
+          }
+
+          desc.value = value;
+          Object.defineProperty(receiver, property, desc);
+        } else {
+          // Avoid setters that may be defined on Sub's prototype, but not on
+          // the instance.
+          defineProperty(receiver, property, value);
+        }
+
+        return true;
+      };
+    }
+
+    return set(target, property, value, receiver);
+  }
+
+  export default function _set(target, property, value, receiver, isStrict) {
+    var s = set(target, property, value, receiver || target);
+    if (!s && isStrict) {
+      throw new Error('failed to set property');
+    }
+
+    return value;
+  }
+`;
+helpers.taggedTemplateLiteral = helper("7.0.0-beta.0")`
+  export default function _taggedTemplateLiteral(strings, raw) {
+    if (!raw) { raw = strings.slice(0); }
+    return Object.freeze(Object.defineProperties(strings, {
+        raw: { value: Object.freeze(raw) }
+    }));
+  }
+`;
+helpers.taggedTemplateLiteralLoose = helper("7.0.0-beta.0")`
+  export default function _taggedTemplateLiteralLoose(strings, raw) {
+    if (!raw) { raw = strings.slice(0); }
+    strings.raw = raw;
+    return strings;
+  }
+`;
+helpers.readOnlyError = helper("7.0.0-beta.0")`
+  export default function _readOnlyError(name) {
+    throw new TypeError("\\"" + name + "\\" is read-only");
+  }
+`;
+helpers.writeOnlyError = helper("7.12.13")`
+  export default function _writeOnlyError(name) {
+    throw new TypeError("\\"" + name + "\\" is write-only");
+  }
+`;
+helpers.classNameTDZError = helper("7.0.0-beta.0")`
+  export default function _classNameTDZError(name) {
+    throw new Error("Class \\"" + name + "\\" cannot be referenced in computed property keys.");
+  }
+`;
+helpers.temporalUndefined = helper("7.0.0-beta.0")`
+  // This function isn't mean to be called, but to be used as a reference.
+  // We can't use a normal object because it isn't hoisted.
+  export default function _temporalUndefined() {}
+`;
+helpers.tdz = helper("7.5.5")`
+  export default function _tdzError(name) {
+    throw new ReferenceError(name + " is not defined - temporal dead zone");
+  }
+`;
+helpers.temporalRef = helper("7.0.0-beta.0")`
+  import undef from "temporalUndefined";
+  import err from "tdz";
+
+  export default function _temporalRef(val, name) {
+    return val === undef ? err(name) : val;
+  }
+`;
+helpers.slicedToArray = helper("7.0.0-beta.0")`
+  import arrayWithHoles from "arrayWithHoles";
+  import iterableToArrayLimit from "iterableToArrayLimit";
+  import unsupportedIterableToArray from "unsupportedIterableToArray";
+  import nonIterableRest from "nonIterableRest";
+
+  export default function _slicedToArray(arr, i) {
+    return (
+      arrayWithHoles(arr) ||
+      iterableToArrayLimit(arr, i) ||
+      unsupportedIterableToArray(arr, i) ||
+      nonIterableRest()
+    );
+  }
+`;
+helpers.slicedToArrayLoose = helper("7.0.0-beta.0")`
+  import arrayWithHoles from "arrayWithHoles";
+  import iterableToArrayLimitLoose from "iterableToArrayLimitLoose";
+  import unsupportedIterableToArray from "unsupportedIterableToArray";
+  import nonIterableRest from "nonIterableRest";
+
+  export default function _slicedToArrayLoose(arr, i) {
+    return (
+      arrayWithHoles(arr) ||
+      iterableToArrayLimitLoose(arr, i) ||
+      unsupportedIterableToArray(arr, i) ||
+      nonIterableRest()
+    );
+  }
+`;
+helpers.toArray = helper("7.0.0-beta.0")`
+  import arrayWithHoles from "arrayWithHoles";
+  import iterableToArray from "iterableToArray";
+  import unsupportedIterableToArray from "unsupportedIterableToArray";
+  import nonIterableRest from "nonIterableRest";
+
+  export default function _toArray(arr) {
+    return (
+      arrayWithHoles(arr) ||
+      iterableToArray(arr) ||
+      unsupportedIterableToArray(arr) ||
+      nonIterableRest()
+    );
+  }
+`;
+helpers.toConsumableArray = helper("7.0.0-beta.0")`
+  import arrayWithoutHoles from "arrayWithoutHoles";
+  import iterableToArray from "iterableToArray";
+  import unsupportedIterableToArray from "unsupportedIterableToArray";
+  import nonIterableSpread from "nonIterableSpread";
+
+  export default function _toConsumableArray(arr) {
+    return (
+      arrayWithoutHoles(arr) ||
+      iterableToArray(arr) ||
+      unsupportedIterableToArray(arr) ||
+      nonIterableSpread()
+    );
+  }
+`;
+helpers.arrayWithoutHoles = helper("7.0.0-beta.0")`
+  import arrayLikeToArray from "arrayLikeToArray";
+
+  export default function _arrayWithoutHoles(arr) {
+    if (Array.isArray(arr)) return arrayLikeToArray(arr);
+  }
+`;
+helpers.arrayWithHoles = helper("7.0.0-beta.0")`
+  export default function _arrayWithHoles(arr) {
+    if (Array.isArray(arr)) return arr;
+  }
+`;
+helpers.maybeArrayLike = helper("7.9.0")`
+  import arrayLikeToArray from "arrayLikeToArray";
+
+  export default function _maybeArrayLike(next, arr, i) {
+    if (arr && !Array.isArray(arr) && typeof arr.length === "number") {
+      var len = arr.length;
+      return arrayLikeToArray(arr, i !== void 0 && i < len ? i : len);
+    }
+    return next(arr, i);
+  }
+`;
+helpers.iterableToArray = helper("7.0.0-beta.0")`
+  export default function _iterableToArray(iter) {
+    if (typeof Symbol !== "undefined" && iter[Symbol.iterator] != null || iter["@@iterator"] != null) return Array.from(iter);
+  }
+`;
+helpers.iterableToArrayLimit = helper("7.0.0-beta.0")`
+  export default function _iterableToArrayLimit(arr, i) {
+    // this is an expanded form of \`for...of\` that properly supports abrupt completions of
+    // iterators etc. variable names have been minimised to reduce the size of this massive
+    // helper. sometimes spec compliance is annoying :(
+    //
+    // _n = _iteratorNormalCompletion
+    // _d = _didIteratorError
+    // _e = _iteratorError
+    // _i = _iterator
+    // _s = _step
+
+    var _i = arr == null ? null : (typeof Symbol !== "undefined" && arr[Symbol.iterator] || arr["@@iterator"]);
+    if (_i == null) return;
+
+    var _arr = [];
+    var _n = true;
+    var _d = false;
+    var _s, _e;
+    try {
+      for (_i = _i.call(arr); !(_n = (_s = _i.next()).done); _n = true) {
+        _arr.push(_s.value);
+        if (i && _arr.length === i) break;
+      }
+    } catch (err) {
+      _d = true;
+      _e = err;
+    } finally {
+      try {
+        if (!_n && _i["return"] != null) _i["return"]();
+      } finally {
+        if (_d) throw _e;
+      }
+    }
+    return _arr;
+  }
+`;
+helpers.iterableToArrayLimitLoose = helper("7.0.0-beta.0")`
+  export default function _iterableToArrayLimitLoose(arr, i) {
+    var _i = arr && (typeof Symbol !== "undefined" && arr[Symbol.iterator] || arr["@@iterator"]);
+    if (_i == null) return;
+
+    var _arr = [];
+    for (_i = _i.call(arr), _step; !(_step = _i.next()).done;) {
+      _arr.push(_step.value);
+      if (i && _arr.length === i) break;
+    }
+    return _arr;
+  }
+`;
+helpers.unsupportedIterableToArray = helper("7.9.0")`
+  import arrayLikeToArray from "arrayLikeToArray";
+
+  export default function _unsupportedIterableToArray(o, minLen) {
+    if (!o) return;
+    if (typeof o === "string") return arrayLikeToArray(o, minLen);
+    var n = Object.prototype.toString.call(o).slice(8, -1);
+    if (n === "Object" && o.constructor) n = o.constructor.name;
+    if (n === "Map" || n === "Set") return Array.from(o);
+    if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n))
+      return arrayLikeToArray(o, minLen);
+  }
+`;
+helpers.arrayLikeToArray = helper("7.9.0")`
+  export default function _arrayLikeToArray(arr, len) {
+    if (len == null || len > arr.length) len = arr.length;
+    for (var i = 0, arr2 = new Array(len); i < len; i++) arr2[i] = arr[i];
+    return arr2;
+  }
+`;
+helpers.nonIterableSpread = helper("7.0.0-beta.0")`
+  export default function _nonIterableSpread() {
+    throw new TypeError(
+      "Invalid attempt to spread non-iterable instance.\\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."
+    );
+  }
+`;
+helpers.nonIterableRest = helper("7.0.0-beta.0")`
+  export default function _nonIterableRest() {
+    throw new TypeError(
+      "Invalid attempt to destructure non-iterable instance.\\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."
+    );
+  }
+`;
+helpers.createForOfIteratorHelper = helper("7.9.0")`
+  import unsupportedIterableToArray from "unsupportedIterableToArray";
+
+  // s: start (create the iterator)
+  // n: next
+  // e: error (called whenever something throws)
+  // f: finish (always called at the end)
+
+  export default function _createForOfIteratorHelper(o, allowArrayLike) {
+    var it = typeof Symbol !== "undefined" && o[Symbol.iterator] || o["@@iterator"];
+
+    if (!it) {
+      // Fallback for engines without symbol support
+      if (
+        Array.isArray(o) ||
+        (it = unsupportedIterableToArray(o)) ||
+        (allowArrayLike && o && typeof o.length === "number")
+      ) {
+        if (it) o = it;
+        var i = 0;
+        var F = function(){};
+        return {
+          s: F,
+          n: function() {
+            if (i >= o.length) return { done: true };
+            return { done: false, value: o[i++] };
+          },
+          e: function(e) { throw e; },
+          f: F,
+        };
+      }
+
+      throw new TypeError("Invalid attempt to iterate non-iterable instance.\\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
+    }
+
+    var normalCompletion = true, didErr = false, err;
+
+    return {
+      s: function() {
+        it = it.call(o);
+      },
+      n: function() {
+        var step = it.next();
+        normalCompletion = step.done;
+        return step;
+      },
+      e: function(e) {
+        didErr = true;
+        err = e;
+      },
+      f: function() {
+        try {
+          if (!normalCompletion && it.return != null) it.return();
+        } finally {
+          if (didErr) throw err;
+        }
+      }
+    };
+  }
+`;
+helpers.createForOfIteratorHelperLoose = helper("7.9.0")`
+  import unsupportedIterableToArray from "unsupportedIterableToArray";
+
+  export default function _createForOfIteratorHelperLoose(o, allowArrayLike) {
+    var it = typeof Symbol !== "undefined" && o[Symbol.iterator] || o["@@iterator"];
+
+    if (it) return (it = it.call(o)).next.bind(it);
+
+    // Fallback for engines without symbol support
+    if (
+      Array.isArray(o) ||
+      (it = unsupportedIterableToArray(o)) ||
+      (allowArrayLike && o && typeof o.length === "number")
+    ) {
+      if (it) o = it;
+      var i = 0;
+      return function() {
+        if (i >= o.length) return { done: true };
+        return { done: false, value: o[i++] };
+      }
+    }
+
+    throw new TypeError("Invalid attempt to iterate non-iterable instance.\\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
+  }
+`;
+helpers.skipFirstGeneratorNext = helper("7.0.0-beta.0")`
+  export default function _skipFirstGeneratorNext(fn) {
+    return function () {
+      var it = fn.apply(this, arguments);
+      it.next();
+      return it;
+    }
+  }
+`;
+helpers.toPrimitive = helper("7.1.5")`
+  export default function _toPrimitive(
+    input,
+    hint /*: "default" | "string" | "number" | void */
+  ) {
+    if (typeof input !== "object" || input === null) return input;
+    var prim = input[Symbol.toPrimitive];
+    if (prim !== undefined) {
+      var res = prim.call(input, hint || "default");
+      if (typeof res !== "object") return res;
+      throw new TypeError("@@toPrimitive must return a primitive value.");
+    }
+    return (hint === "string" ? String : Number)(input);
+  }
+`;
+helpers.toPropertyKey = helper("7.1.5")`
+  import toPrimitive from "toPrimitive";
+
+  export default function _toPropertyKey(arg) {
+    var key = toPrimitive(arg, "string");
+    return typeof key === "symbol" ? key : String(key);
+  }
+`;
+helpers.initializerWarningHelper = helper("7.0.0-beta.0")`
+    export default function _initializerWarningHelper(descriptor, context){
+        throw new Error(
+          'Decorating class property failed. Please ensure that ' +
+          'proposal-class-properties is enabled and runs after the decorators transform.'
+        );
+    }
+`;
+helpers.initializerDefineProperty = helper("7.0.0-beta.0")`
+    export default function _initializerDefineProperty(target, property, descriptor, context){
+        if (!descriptor) return;
+
+        Object.defineProperty(target, property, {
+            enumerable: descriptor.enumerable,
+            configurable: descriptor.configurable,
+            writable: descriptor.writable,
+            value: descriptor.initializer ? descriptor.initializer.call(context) : void 0,
+        });
+    }
+`;
+helpers.applyDecoratedDescriptor = helper("7.0.0-beta.0")`
+    export default function _applyDecoratedDescriptor(target, property, decorators, descriptor, context){
+        var desc = {};
+        Object.keys(descriptor).forEach(function(key){
+            desc[key] = descriptor[key];
+        });
+        desc.enumerable = !!desc.enumerable;
+        desc.configurable = !!desc.configurable;
+        if ('value' in desc || desc.initializer){
+            desc.writable = true;
+        }
+
+        desc = decorators.slice().reverse().reduce(function(desc, decorator){
+            return decorator(target, property, desc) || desc;
+        }, desc);
+
+        if (context && desc.initializer !== void 0){
+            desc.value = desc.initializer ? desc.initializer.call(context) : void 0;
+            desc.initializer = undefined;
+        }
+
+        if (desc.initializer === void 0){
+            Object.defineProperty(target, property, desc);
+            desc = null;
+        }
+
+        return desc;
+    }
+`;
+helpers.classPrivateFieldLooseKey = helper("7.0.0-beta.0")`
+  var id = 0;
+  export default function _classPrivateFieldKey(name) {
+    return "__private_" + (id++) + "_" + name;
+  }
+`;
+helpers.classPrivateFieldLooseBase = helper("7.0.0-beta.0")`
+  export default function _classPrivateFieldBase(receiver, privateKey) {
+    if (!Object.prototype.hasOwnProperty.call(receiver, privateKey)) {
+      throw new TypeError("attempted to use private field on non-instance");
+    }
+    return receiver;
+  }
+`;
+helpers.classPrivateFieldGet = helper("7.0.0-beta.0")`
+  import classApplyDescriptorGet from "classApplyDescriptorGet";
+  import classExtractFieldDescriptor from "classExtractFieldDescriptor";
+  export default function _classPrivateFieldGet(receiver, privateMap) {
+    var descriptor = classExtractFieldDescriptor(receiver, privateMap, "get");
+    return classApplyDescriptorGet(receiver, descriptor);
+  }
+`;
+helpers.classPrivateFieldSet = helper("7.0.0-beta.0")`
+  import classApplyDescriptorSet from "classApplyDescriptorSet";
+  import classExtractFieldDescriptor from "classExtractFieldDescriptor";
+  export default function _classPrivateFieldSet(receiver, privateMap, value) {
+    var descriptor = classExtractFieldDescriptor(receiver, privateMap, "set");
+    classApplyDescriptorSet(receiver, descriptor, value);
+    return value;
+  }
+`;
+helpers.classPrivateFieldDestructureSet = helper("7.4.4")`
+  import classApplyDescriptorDestructureSet from "classApplyDescriptorDestructureSet";
+  import classExtractFieldDescriptor from "classExtractFieldDescriptor";
+  export default function _classPrivateFieldDestructureSet(receiver, privateMap) {
+    var descriptor = classExtractFieldDescriptor(receiver, privateMap, "set");
+    return classApplyDescriptorDestructureSet(receiver, descriptor);
+  }
+`;
+helpers.classExtractFieldDescriptor = helper("7.13.10")`
+  export default function _classExtractFieldDescriptor(receiver, privateMap, action) {
+    if (!privateMap.has(receiver)) {
+      throw new TypeError("attempted to " + action + " private field on non-instance");
+    }
+    return privateMap.get(receiver);
+  }
+`;
+helpers.classStaticPrivateFieldSpecGet = helper("7.0.2")`
+  import classApplyDescriptorGet from "classApplyDescriptorGet";
+  import classCheckPrivateStaticAccess from "classCheckPrivateStaticAccess";
+  import classCheckPrivateStaticFieldDescriptor from "classCheckPrivateStaticFieldDescriptor";
+  export default function _classStaticPrivateFieldSpecGet(receiver, classConstructor, descriptor) {
+    classCheckPrivateStaticAccess(receiver, classConstructor);
+    classCheckPrivateStaticFieldDescriptor(descriptor, "get");
+    return classApplyDescriptorGet(receiver, descriptor);
+  }
+`;
+helpers.classStaticPrivateFieldSpecSet = helper("7.0.2")`
+  import classApplyDescriptorSet from "classApplyDescriptorSet";
+  import classCheckPrivateStaticAccess from "classCheckPrivateStaticAccess";
+  import classCheckPrivateStaticFieldDescriptor from "classCheckPrivateStaticFieldDescriptor";
+  export default function _classStaticPrivateFieldSpecSet(receiver, classConstructor, descriptor, value) {
+    classCheckPrivateStaticAccess(receiver, classConstructor);
+    classCheckPrivateStaticFieldDescriptor(descriptor, "set");
+    classApplyDescriptorSet(receiver, descriptor, value);
+    return value;
+  }
+`;
+helpers.classStaticPrivateMethodGet = helper("7.3.2")`
+  import classCheckPrivateStaticAccess from "classCheckPrivateStaticAccess";
+  export default function _classStaticPrivateMethodGet(receiver, classConstructor, method) {
+    classCheckPrivateStaticAccess(receiver, classConstructor);
+    return method;
+  }
+`;
+helpers.classStaticPrivateMethodSet = helper("7.3.2")`
+  export default function _classStaticPrivateMethodSet() {
+    throw new TypeError("attempted to set read only static private field");
+  }
+`;
+helpers.classApplyDescriptorGet = helper("7.13.10")`
+  export default function _classApplyDescriptorGet(receiver, descriptor) {
+    if (descriptor.get) {
+      return descriptor.get.call(receiver);
+    }
+    return descriptor.value;
+  }
+`;
+helpers.classApplyDescriptorSet = helper("7.13.10")`
+  export default function _classApplyDescriptorSet(receiver, descriptor, value) {
+    if (descriptor.set) {
+      descriptor.set.call(receiver, value);
+    } else {
+      if (!descriptor.writable) {
+        // This should only throw in strict mode, but class bodies are
+        // always strict and private fields can only be used inside
+        // class bodies.
+        throw new TypeError("attempted to set read only private field");
+      }
+      descriptor.value = value;
+    }
+  }
+`;
+helpers.classApplyDescriptorDestructureSet = helper("7.13.10")`
+  export default function _classApplyDescriptorDestructureSet(receiver, descriptor) {
+    if (descriptor.set) {
+      if (!("__destrObj" in descriptor)) {
+        descriptor.__destrObj = {
+          set value(v) {
+            descriptor.set.call(receiver, v)
+          },
+        };
+      }
+      return descriptor.__destrObj;
+    } else {
+      if (!descriptor.writable) {
+        // This should only throw in strict mode, but class bodies are
+        // always strict and private fields can only be used inside
+        // class bodies.
+        throw new TypeError("attempted to set read only private field");
+      }
+
+      return descriptor;
+    }
+  }
+`;
+helpers.classStaticPrivateFieldDestructureSet = helper("7.13.10")`
+  import classApplyDescriptorDestructureSet from "classApplyDescriptorDestructureSet";
+  import classCheckPrivateStaticAccess from "classCheckPrivateStaticAccess";
+  import classCheckPrivateStaticFieldDescriptor from "classCheckPrivateStaticFieldDescriptor";
+  export default function _classStaticPrivateFieldDestructureSet(receiver, classConstructor, descriptor) {
+    classCheckPrivateStaticAccess(receiver, classConstructor);
+    classCheckPrivateStaticFieldDescriptor(descriptor, "set");
+    return classApplyDescriptorDestructureSet(receiver, descriptor);
+  }
+`;
+helpers.classCheckPrivateStaticAccess = helper("7.13.10")`
+  export default function _classCheckPrivateStaticAccess(receiver, classConstructor) {
+    if (receiver !== classConstructor) {
+      throw new TypeError("Private static access of wrong provenance");
+    }
+  }
+`;
+helpers.classCheckPrivateStaticFieldDescriptor = helper("7.13.10")`
+  export default function _classCheckPrivateStaticFieldDescriptor(descriptor, action) {
+    if (descriptor === undefined) {
+      throw new TypeError("attempted to " + action + " private static field before its declaration");
+    }
+  }
+`;
+helpers.decorate = helper("7.1.5")`
+  import toArray from "toArray";
+  import toPropertyKey from "toPropertyKey";
+
+  // These comments are stripped by @babel/template
+  /*::
+  type PropertyDescriptor =
+    | {
+        value: any,
+        writable: boolean,
+        configurable: boolean,
+        enumerable: boolean,
+      }
+    | {
+        get?: () => any,
+        set?: (v: any) => void,
+        configurable: boolean,
+        enumerable: boolean,
+      };
+
+  type FieldDescriptor ={
+    writable: boolean,
+    configurable: boolean,
+    enumerable: boolean,
+  };
+
+  type Placement = "static" | "prototype" | "own";
+  type Key = string | symbol; // PrivateName is not supported yet.
+
+  type ElementDescriptor =
+    | {
+        kind: "method",
+        key: Key,
+        placement: Placement,
+        descriptor: PropertyDescriptor
+      }
+    | {
+        kind: "field",
+        key: Key,
+        placement: Placement,
+        descriptor: FieldDescriptor,
+        initializer?: () => any,
+      };
+
+  // This is exposed to the user code
+  type ElementObjectInput = ElementDescriptor & {
+    [@@toStringTag]?: "Descriptor"
+  };
+
+  // This is exposed to the user code
+  type ElementObjectOutput = ElementDescriptor & {
+    [@@toStringTag]?: "Descriptor"
+    extras?: ElementDescriptor[],
+    finisher?: ClassFinisher,
+  };
+
+  // This is exposed to the user code
+  type ClassObject = {
+    [@@toStringTag]?: "Descriptor",
+    kind: "class",
+    elements: ElementDescriptor[],
+  };
+
+  type ElementDecorator = (descriptor: ElementObjectInput) => ?ElementObjectOutput;
+  type ClassDecorator = (descriptor: ClassObject) => ?ClassObject;
+  type ClassFinisher = <A, B>(cl: Class<A>) => Class<B>;
+
+  // Only used by Babel in the transform output, not part of the spec.
+  type ElementDefinition =
+    | {
+        kind: "method",
+        value: any,
+        key: Key,
+        static?: boolean,
+        decorators?: ElementDecorator[],
+      }
+    | {
+        kind: "field",
+        value: () => any,
+        key: Key,
+        static?: boolean,
+        decorators?: ElementDecorator[],
+    };
+
+  declare function ClassFactory<C>(initialize: (instance: C) => void): {
+    F: Class<C>,
+    d: ElementDefinition[]
+  }
+
+  */
+
+  /*::
+  // Various combinations with/without extras and with one or many finishers
+
+  type ElementFinisherExtras = {
+    element: ElementDescriptor,
+    finisher?: ClassFinisher,
+    extras?: ElementDescriptor[],
+  };
+
+  type ElementFinishersExtras = {
+    element: ElementDescriptor,
+    finishers: ClassFinisher[],
+    extras: ElementDescriptor[],
+  };
+
+  type ElementsFinisher = {
+    elements: ElementDescriptor[],
+    finisher?: ClassFinisher,
+  };
+
+  type ElementsFinishers = {
+    elements: ElementDescriptor[],
+    finishers: ClassFinisher[],
+  };
+
+  */
+
+  /*::
+
+  type Placements = {
+    static: Key[],
+    prototype: Key[],
+    own: Key[],
+  };
+
+  */
+
+  // ClassDefinitionEvaluation (Steps 26-*)
+  export default function _decorate(
+    decorators /*: ClassDecorator[] */,
+    factory /*: ClassFactory */,
+    superClass /*: ?Class<*> */,
+    mixins /*: ?Array<Function> */,
+  ) /*: Class<*> */ {
+    var api = _getDecoratorsApi();
+    if (mixins) {
+      for (var i = 0; i < mixins.length; i++) {
+        api = mixins[i](api);
+      }
+    }
+
+    var r = factory(function initialize(O) {
+      api.initializeInstanceElements(O, decorated.elements);
+    }, superClass);
+    var decorated = api.decorateClass(
+      _coalesceClassElements(r.d.map(_createElementDescriptor)),
+      decorators,
+    );
+
+    api.initializeClassElements(r.F, decorated.elements);
+
+    return api.runClassFinishers(r.F, decorated.finishers);
+  }
+
+  function _getDecoratorsApi() {
+    _getDecoratorsApi = function() {
+      return api;
+    };
+
+    var api = {
+      elementsDefinitionOrder: [["method"], ["field"]],
+
+      // InitializeInstanceElements
+      initializeInstanceElements: function(
+        /*::<C>*/ O /*: C */,
+        elements /*: ElementDescriptor[] */,
+      ) {
+        ["method", "field"].forEach(function(kind) {
+          elements.forEach(function(element /*: ElementDescriptor */) {
+            if (element.kind === kind && element.placement === "own") {
+              this.defineClassElement(O, element);
+            }
+          }, this);
+        }, this);
+      },
+
+      // InitializeClassElements
+      initializeClassElements: function(
+        /*::<C>*/ F /*: Class<C> */,
+        elements /*: ElementDescriptor[] */,
+      ) {
+        var proto = F.prototype;
+
+        ["method", "field"].forEach(function(kind) {
+          elements.forEach(function(element /*: ElementDescriptor */) {
+            var placement = element.placement;
+            if (
+              element.kind === kind &&
+              (placement === "static" || placement === "prototype")
+            ) {
+              var receiver = placement === "static" ? F : proto;
+              this.defineClassElement(receiver, element);
+            }
+          }, this);
+        }, this);
+      },
+
+      // DefineClassElement
+      defineClassElement: function(
+        /*::<C>*/ receiver /*: C | Class<C> */,
+        element /*: ElementDescriptor */,
+      ) {
+        var descriptor /*: PropertyDescriptor */ = element.descriptor;
+        if (element.kind === "field") {
+          var initializer = element.initializer;
+          descriptor = {
+            enumerable: descriptor.enumerable,
+            writable: descriptor.writable,
+            configurable: descriptor.configurable,
+            value: initializer === void 0 ? void 0 : initializer.call(receiver),
+          };
+        }
+        Object.defineProperty(receiver, element.key, descriptor);
+      },
+
+      // DecorateClass
+      decorateClass: function(
+        elements /*: ElementDescriptor[] */,
+        decorators /*: ClassDecorator[] */,
+      ) /*: ElementsFinishers */ {
+        var newElements /*: ElementDescriptor[] */ = [];
+        var finishers /*: ClassFinisher[] */ = [];
+        var placements /*: Placements */ = {
+          static: [],
+          prototype: [],
+          own: [],
+        };
+
+        elements.forEach(function(element /*: ElementDescriptor */) {
+          this.addElementPlacement(element, placements);
+        }, this);
+
+        elements.forEach(function(element /*: ElementDescriptor */) {
+          if (!_hasDecorators(element)) return newElements.push(element);
+
+          var elementFinishersExtras /*: ElementFinishersExtras */ = this.decorateElement(
+            element,
+            placements,
+          );
+          newElements.push(elementFinishersExtras.element);
+          newElements.push.apply(newElements, elementFinishersExtras.extras);
+          finishers.push.apply(finishers, elementFinishersExtras.finishers);
+        }, this);
+
+        if (!decorators) {
+          return { elements: newElements, finishers: finishers };
+        }
+
+        var result /*: ElementsFinishers */ = this.decorateConstructor(
+          newElements,
+          decorators,
+        );
+        finishers.push.apply(finishers, result.finishers);
+        result.finishers = finishers;
+
+        return result;
+      },
+
+      // AddElementPlacement
+      addElementPlacement: function(
+        element /*: ElementDescriptor */,
+        placements /*: Placements */,
+        silent /*: boolean */,
+      ) {
+        var keys = placements[element.placement];
+        if (!silent && keys.indexOf(element.key) !== -1) {
+          throw new TypeError("Duplicated element (" + element.key + ")");
+        }
+        keys.push(element.key);
+      },
+
+      // DecorateElement
+      decorateElement: function(
+        element /*: ElementDescriptor */,
+        placements /*: Placements */,
+      ) /*: ElementFinishersExtras */ {
+        var extras /*: ElementDescriptor[] */ = [];
+        var finishers /*: ClassFinisher[] */ = [];
+
+        for (
+          var decorators = element.decorators, i = decorators.length - 1;
+          i >= 0;
+          i--
+        ) {
+          // (inlined) RemoveElementPlacement
+          var keys = placements[element.placement];
+          keys.splice(keys.indexOf(element.key), 1);
+
+          var elementObject /*: ElementObjectInput */ = this.fromElementDescriptor(
+            element,
+          );
+          var elementFinisherExtras /*: ElementFinisherExtras */ = this.toElementFinisherExtras(
+            (0, decorators[i])(elementObject) /*: ElementObjectOutput */ ||
+              elementObject,
+          );
+
+          element = elementFinisherExtras.element;
+          this.addElementPlacement(element, placements);
+
+          if (elementFinisherExtras.finisher) {
+            finishers.push(elementFinisherExtras.finisher);
+          }
+
+          var newExtras /*: ElementDescriptor[] | void */ =
+            elementFinisherExtras.extras;
+          if (newExtras) {
+            for (var j = 0; j < newExtras.length; j++) {
+              this.addElementPlacement(newExtras[j], placements);
+            }
+            extras.push.apply(extras, newExtras);
+          }
+        }
+
+        return { element: element, finishers: finishers, extras: extras };
+      },
+
+      // DecorateConstructor
+      decorateConstructor: function(
+        elements /*: ElementDescriptor[] */,
+        decorators /*: ClassDecorator[] */,
+      ) /*: ElementsFinishers */ {
+        var finishers /*: ClassFinisher[] */ = [];
+
+        for (var i = decorators.length - 1; i >= 0; i--) {
+          var obj /*: ClassObject */ = this.fromClassDescriptor(elements);
+          var elementsAndFinisher /*: ElementsFinisher */ = this.toClassDescriptor(
+            (0, decorators[i])(obj) /*: ClassObject */ || obj,
+          );
+
+          if (elementsAndFinisher.finisher !== undefined) {
+            finishers.push(elementsAndFinisher.finisher);
+          }
+
+          if (elementsAndFinisher.elements !== undefined) {
+            elements = elementsAndFinisher.elements;
+
+            for (var j = 0; j < elements.length - 1; j++) {
+              for (var k = j + 1; k < elements.length; k++) {
+                if (
+                  elements[j].key === elements[k].key &&
+                  elements[j].placement === elements[k].placement
+                ) {
+                  throw new TypeError(
+                    "Duplicated element (" + elements[j].key + ")",
+                  );
+                }
+              }
+            }
+          }
+        }
+
+        return { elements: elements, finishers: finishers };
+      },
+
+      // FromElementDescriptor
+      fromElementDescriptor: function(
+        element /*: ElementDescriptor */,
+      ) /*: ElementObject */ {
+        var obj /*: ElementObject */ = {
+          kind: element.kind,
+          key: element.key,
+          placement: element.placement,
+          descriptor: element.descriptor,
+        };
+
+        var desc = {
+          value: "Descriptor",
+          configurable: true,
+        };
+        Object.defineProperty(obj, Symbol.toStringTag, desc);
+
+        if (element.kind === "field") obj.initializer = element.initializer;
+
+        return obj;
+      },
+
+      // ToElementDescriptors
+      toElementDescriptors: function(
+        elementObjects /*: ElementObject[] */,
+      ) /*: ElementDescriptor[] */ {
+        if (elementObjects === undefined) return;
+        return toArray(elementObjects).map(function(elementObject) {
+          var element = this.toElementDescriptor(elementObject);
+          this.disallowProperty(elementObject, "finisher", "An element descriptor");
+          this.disallowProperty(elementObject, "extras", "An element descriptor");
+          return element;
+        }, this);
+      },
+
+      // ToElementDescriptor
+      toElementDescriptor: function(
+        elementObject /*: ElementObject */,
+      ) /*: ElementDescriptor */ {
+        var kind = String(elementObject.kind);
+        if (kind !== "method" && kind !== "field") {
+          throw new TypeError(
+            'An element descriptor\\'s .kind property must be either "method" or' +
+              ' "field", but a decorator created an element descriptor with' +
+              ' .kind "' +
+              kind +
+              '"',
+          );
+        }
+
+        var key = toPropertyKey(elementObject.key);
+
+        var placement = String(elementObject.placement);
+        if (
+          placement !== "static" &&
+          placement !== "prototype" &&
+          placement !== "own"
+        ) {
+          throw new TypeError(
+            'An element descriptor\\'s .placement property must be one of "static",' +
+              ' "prototype" or "own", but a decorator created an element descriptor' +
+              ' with .placement "' +
+              placement +
+              '"',
+          );
+        }
+
+        var descriptor /*: PropertyDescriptor */ = elementObject.descriptor;
+
+        this.disallowProperty(elementObject, "elements", "An element descriptor");
+
+        var element /*: ElementDescriptor */ = {
+          kind: kind,
+          key: key,
+          placement: placement,
+          descriptor: Object.assign({}, descriptor),
+        };
+
+        if (kind !== "field") {
+          this.disallowProperty(elementObject, "initializer", "A method descriptor");
+        } else {
+          this.disallowProperty(
+            descriptor,
+            "get",
+            "The property descriptor of a field descriptor",
+          );
+          this.disallowProperty(
+            descriptor,
+            "set",
+            "The property descriptor of a field descriptor",
+          );
+          this.disallowProperty(
+            descriptor,
+            "value",
+            "The property descriptor of a field descriptor",
+          );
+
+          element.initializer = elementObject.initializer;
+        }
+
+        return element;
+      },
+
+      toElementFinisherExtras: function(
+        elementObject /*: ElementObject */,
+      ) /*: ElementFinisherExtras */ {
+        var element /*: ElementDescriptor */ = this.toElementDescriptor(
+          elementObject,
+        );
+        var finisher /*: ClassFinisher */ = _optionalCallableProperty(
+          elementObject,
+          "finisher",
+        );
+        var extras /*: ElementDescriptors[] */ = this.toElementDescriptors(
+          elementObject.extras,
+        );
+
+        return { element: element, finisher: finisher, extras: extras };
+      },
+
+      // FromClassDescriptor
+      fromClassDescriptor: function(
+        elements /*: ElementDescriptor[] */,
+      ) /*: ClassObject */ {
+        var obj = {
+          kind: "class",
+          elements: elements.map(this.fromElementDescriptor, this),
+        };
+
+        var desc = { value: "Descriptor", configurable: true };
+        Object.defineProperty(obj, Symbol.toStringTag, desc);
+
+        return obj;
+      },
+
+      // ToClassDescriptor
+      toClassDescriptor: function(
+        obj /*: ClassObject */,
+      ) /*: ElementsFinisher */ {
+        var kind = String(obj.kind);
+        if (kind !== "class") {
+          throw new TypeError(
+            'A class descriptor\\'s .kind property must be "class", but a decorator' +
+              ' created a class descriptor with .kind "' +
+              kind +
+              '"',
+          );
+        }
+
+        this.disallowProperty(obj, "key", "A class descriptor");
+        this.disallowProperty(obj, "placement", "A class descriptor");
+        this.disallowProperty(obj, "descriptor", "A class descriptor");
+        this.disallowProperty(obj, "initializer", "A class descriptor");
+        this.disallowProperty(obj, "extras", "A class descriptor");
+
+        var finisher = _optionalCallableProperty(obj, "finisher");
+        var elements = this.toElementDescriptors(obj.elements);
+
+        return { elements: elements, finisher: finisher };
+      },
+
+      // RunClassFinishers
+      runClassFinishers: function(
+        constructor /*: Class<*> */,
+        finishers /*: ClassFinisher[] */,
+      ) /*: Class<*> */ {
+        for (var i = 0; i < finishers.length; i++) {
+          var newConstructor /*: ?Class<*> */ = (0, finishers[i])(constructor);
+          if (newConstructor !== undefined) {
+            // NOTE: This should check if IsConstructor(newConstructor) is false.
+            if (typeof newConstructor !== "function") {
+              throw new TypeError("Finishers must return a constructor.");
+            }
+            constructor = newConstructor;
+          }
+        }
+        return constructor;
+      },
+
+      disallowProperty: function(obj, name, objectType) {
+        if (obj[name] !== undefined) {
+          throw new TypeError(objectType + " can't have a ." + name + " property.");
+        }
+      }
+    };
+
+    return api;
+  }
+
+  // ClassElementEvaluation
+  function _createElementDescriptor(
+    def /*: ElementDefinition */,
+  ) /*: ElementDescriptor */ {
+    var key = toPropertyKey(def.key);
+
+    var descriptor /*: PropertyDescriptor */;
+    if (def.kind === "method") {
+      descriptor = {
+        value: def.value,
+        writable: true,
+        configurable: true,
+        enumerable: false,
+      };
+    } else if (def.kind === "get") {
+      descriptor = { get: def.value, configurable: true, enumerable: false };
+    } else if (def.kind === "set") {
+      descriptor = { set: def.value, configurable: true, enumerable: false };
+    } else if (def.kind === "field") {
+      descriptor = { configurable: true, writable: true, enumerable: true };
+    }
+
+    var element /*: ElementDescriptor */ = {
+      kind: def.kind === "field" ? "field" : "method",
+      key: key,
+      placement: def.static
+        ? "static"
+        : def.kind === "field"
+        ? "own"
+        : "prototype",
+      descriptor: descriptor,
+    };
+    if (def.decorators) element.decorators = def.decorators;
+    if (def.kind === "field") element.initializer = def.value;
+
+    return element;
+  }
+
+  // CoalesceGetterSetter
+  function _coalesceGetterSetter(
+    element /*: ElementDescriptor */,
+    other /*: ElementDescriptor */,
+  ) {
+    if (element.descriptor.get !== undefined) {
+      other.descriptor.get = element.descriptor.get;
+    } else {
+      other.descriptor.set = element.descriptor.set;
+    }
+  }
+
+  // CoalesceClassElements
+  function _coalesceClassElements(
+    elements /*: ElementDescriptor[] */,
+  ) /*: ElementDescriptor[] */ {
+    var newElements /*: ElementDescriptor[] */ = [];
+
+    var isSameElement = function(
+      other /*: ElementDescriptor */,
+    ) /*: boolean */ {
+      return (
+        other.kind === "method" &&
+        other.key === element.key &&
+        other.placement === element.placement
+      );
+    };
+
+    for (var i = 0; i < elements.length; i++) {
+      var element /*: ElementDescriptor */ = elements[i];
+      var other /*: ElementDescriptor */;
+
+      if (
+        element.kind === "method" &&
+        (other = newElements.find(isSameElement))
+      ) {
+        if (
+          _isDataDescriptor(element.descriptor) ||
+          _isDataDescriptor(other.descriptor)
+        ) {
+          if (_hasDecorators(element) || _hasDecorators(other)) {
+            throw new ReferenceError(
+              "Duplicated methods (" + element.key + ") can't be decorated.",
+            );
+          }
+          other.descriptor = element.descriptor;
+        } else {
+          if (_hasDecorators(element)) {
+            if (_hasDecorators(other)) {
+              throw new ReferenceError(
+                "Decorators can't be placed on different accessors with for " +
+                  "the same property (" +
+                  element.key +
+                  ").",
+              );
+            }
+            other.decorators = element.decorators;
+          }
+          _coalesceGetterSetter(element, other);
+        }
+      } else {
+        newElements.push(element);
+      }
+    }
+
+    return newElements;
+  }
+
+  function _hasDecorators(element /*: ElementDescriptor */) /*: boolean */ {
+    return element.decorators && element.decorators.length;
+  }
+
+  function _isDataDescriptor(desc /*: PropertyDescriptor */) /*: boolean */ {
+    return (
+      desc !== undefined &&
+      !(desc.value === undefined && desc.writable === undefined)
+    );
+  }
+
+  function _optionalCallableProperty /*::<T>*/(
+    obj /*: T */,
+    name /*: $Keys<T> */,
+  ) /*: ?Function */ {
+    var value = obj[name];
+    if (value !== undefined && typeof value !== "function") {
+      throw new TypeError("Expected '" + name + "' to be a function");
+    }
+    return value;
+  }
+
+`;
+helpers.classPrivateMethodGet = helper("7.1.6")`
+  export default function _classPrivateMethodGet(receiver, privateSet, fn) {
+    if (!privateSet.has(receiver)) {
+      throw new TypeError("attempted to get private field on non-instance");
+    }
+    return fn;
+  }
+`;
+helpers.checkPrivateRedeclaration = helper("7.14.1")`
+  export default function _checkPrivateRedeclaration(obj, privateCollection) {
+    if (privateCollection.has(obj)) {
+      throw new TypeError("Cannot initialize the same private elements twice on an object");
+    }
+  }
+`;
+helpers.classPrivateFieldInitSpec = helper("7.14.1")`
+  import checkPrivateRedeclaration from "checkPrivateRedeclaration";
+
+  export default function _classPrivateFieldInitSpec(obj, privateMap, value) {
+    checkPrivateRedeclaration(obj, privateMap);
+    privateMap.set(obj, value);
+  }
+`;
+helpers.classPrivateMethodInitSpec = helper("7.14.1")`
+  import checkPrivateRedeclaration from "checkPrivateRedeclaration";
+
+  export default function _classPrivateMethodInitSpec(obj, privateSet) {
+    checkPrivateRedeclaration(obj, privateSet);
+    privateSet.add(obj);
+  }
+`;
+{
+  helpers.classPrivateMethodSet = helper("7.1.6")`
+    export default function _classPrivateMethodSet() {
+      throw new TypeError("attempted to reassign private method");
+    }
+  `;
+}
+
+/***/ }),
+/* 182 */
+/*!**************************************************************!*\
+  !*** ./node_modules/@babel/helpers/lib/helpers-generated.js ***!
+  \**************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.wrapRegExp = exports.typeof = exports.objectSpread2 = exports.jsx = void 0;
+
+var _template = __webpack_require__(/*! @babel/template */ 163);
+
+const jsx = {
+  minVersion: "7.0.0-beta.0",
+  ast: () => _template.default.program.ast('\nvar REACT_ELEMENT_TYPE;\nexport default function _createRawReactElement(type, props, key, children) {\n  if (!REACT_ELEMENT_TYPE) {\n    REACT_ELEMENT_TYPE =\n      (typeof Symbol === "function" &&\n        \n        Symbol["for"] &&\n        Symbol["for"]("react.element")) ||\n      0xeac7;\n  }\n  var defaultProps = type && type.defaultProps;\n  var childrenLength = arguments.length - 3;\n  if (!props && childrenLength !== 0) {\n    \n    \n    props = { children: void 0 };\n  }\n  if (childrenLength === 1) {\n    props.children = children;\n  } else if (childrenLength > 1) {\n    var childArray = new Array(childrenLength);\n    for (var i = 0; i < childrenLength; i++) {\n      childArray[i] = arguments[i + 3];\n    }\n    props.children = childArray;\n  }\n  if (props && defaultProps) {\n    for (var propName in defaultProps) {\n      if (props[propName] === void 0) {\n        props[propName] = defaultProps[propName];\n      }\n    }\n  } else if (!props) {\n    props = defaultProps || {};\n  }\n  return {\n    $$typeof: REACT_ELEMENT_TYPE,\n    type: type,\n    key: key === undefined ? null : "" + key,\n    ref: null,\n    props: props,\n    _owner: null,\n  };\n}\n')
+};
+exports.jsx = jsx;
+const objectSpread2 = {
+  minVersion: "7.5.0",
+  ast: () => _template.default.program.ast('\nimport defineProperty from "defineProperty";\nfunction ownKeys(object, enumerableOnly) {\n  var keys = Object.keys(object);\n  if (Object.getOwnPropertySymbols) {\n    var symbols = Object.getOwnPropertySymbols(object);\n    if (enumerableOnly) {\n      symbols = symbols.filter(function (sym) {\n        return Object.getOwnPropertyDescriptor(object, sym).enumerable;\n      });\n    }\n    keys.push.apply(keys, symbols);\n  }\n  return keys;\n}\nexport default function _objectSpread2(target) {\n  for (var i = 1; i < arguments.length; i++) {\n    var source = arguments[i] != null ? arguments[i] : {};\n    if (i % 2) {\n      ownKeys(Object(source), true).forEach(function (key) {\n        defineProperty(target, key, source[key]);\n      });\n    } else if (Object.getOwnPropertyDescriptors) {\n      Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));\n    } else {\n      ownKeys(Object(source)).forEach(function (key) {\n        Object.defineProperty(\n          target,\n          key,\n          Object.getOwnPropertyDescriptor(source, key)\n        );\n      });\n    }\n  }\n  return target;\n}\n')
+};
+exports.objectSpread2 = objectSpread2;
+const _typeof = {
+  minVersion: "7.0.0-beta.0",
+  ast: () => _template.default.program.ast('\nexport default function _typeof(obj) {\n  "@babel/helpers - typeof";\n  if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") {\n    _typeof = function (obj) {\n      return typeof obj;\n    };\n  } else {\n    _typeof = function (obj) {\n      return obj &&\n        typeof Symbol === "function" &&\n        obj.constructor === Symbol &&\n        obj !== Symbol.prototype\n        ? "symbol"\n        : typeof obj;\n    };\n  }\n  return _typeof(obj);\n}\n')
+};
+exports.typeof = _typeof;
+const wrapRegExp = {
+  minVersion: "7.2.6",
+  ast: () => _template.default.program.ast('\nimport setPrototypeOf from "setPrototypeOf";\nimport inherits from "inherits";\nexport default function _wrapRegExp() {\n  _wrapRegExp = function (re, groups) {\n    return new BabelRegExp(re, undefined, groups);\n  };\n  var _super = RegExp.prototype;\n  var _groups = new WeakMap();\n  function BabelRegExp(re, flags, groups) {\n    var _this = new RegExp(re, flags);\n    \n    _groups.set(_this, groups || _groups.get(re));\n    return setPrototypeOf(_this, BabelRegExp.prototype);\n  }\n  inherits(BabelRegExp, RegExp);\n  BabelRegExp.prototype.exec = function (str) {\n    var result = _super.exec.call(this, str);\n    if (result) result.groups = buildGroups(result, this);\n    return result;\n  };\n  BabelRegExp.prototype[Symbol.replace] = function (str, substitution) {\n    if (typeof substitution === "string") {\n      var groups = _groups.get(this);\n      return _super[Symbol.replace].call(\n        this,\n        str,\n        substitution.replace(/\\$<([^>]+)>/g, function (_, name) {\n          return "$" + groups[name];\n        })\n      );\n    } else if (typeof substitution === "function") {\n      var _this = this;\n      return _super[Symbol.replace].call(this, str, function () {\n        var args = arguments;\n        \n        if (typeof args[args.length - 1] !== "object") {\n          args = [].slice.call(args);\n          args.push(buildGroups(args, _this));\n        }\n        return substitution.apply(this, args);\n      });\n    } else {\n      return _super[Symbol.replace].call(this, str, substitution);\n    }\n  };\n  function buildGroups(result, re) {\n    \n    \n    var g = _groups.get(re);\n    return Object.keys(g).reduce(function (groups, name) {\n      groups[name] = result[g[name]];\n      return groups;\n    }, Object.create(null));\n  }\n  return _wrapRegExp.apply(this, arguments);\n}\n')
+};
+exports.wrapRegExp = wrapRegExp;
+
+/***/ }),
+/* 183 */
 /*!*******************************************************************!*\
   !*** ./node_modules/@babel/helper-module-transforms/lib/index.js ***!
   \*******************************************************************/
@@ -47117,21 +55084,21 @@ Object.defineProperty(exports, "getModuleName", {
   }
 });
 
-var _assert = __webpack_require__(/*! assert */ 160);
+var _assert = __webpack_require__(/*! assert */ 184);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var _template = __webpack_require__(/*! @babel/template */ 141);
+var _template = __webpack_require__(/*! @babel/template */ 163);
 
-var _helperModuleImports = __webpack_require__(/*! @babel/helper-module-imports */ 165);
+var _helperModuleImports = __webpack_require__(/*! @babel/helper-module-imports */ 189);
 
-var _rewriteThis = __webpack_require__(/*! ./rewrite-this */ 169);
+var _rewriteThis = __webpack_require__(/*! ./rewrite-this */ 193);
 
-var _rewriteLiveReferences = __webpack_require__(/*! ./rewrite-live-references */ 173);
+var _rewriteLiveReferences = __webpack_require__(/*! ./rewrite-live-references */ 197);
 
-var _normalizeAndLoadMetadata = __webpack_require__(/*! ./normalize-and-load-metadata */ 175);
+var _normalizeAndLoadMetadata = __webpack_require__(/*! ./normalize-and-load-metadata */ 199);
 
-var _getModuleName = __webpack_require__(/*! ./get-module-name */ 177);
+var _getModuleName = __webpack_require__(/*! ./get-module-name */ 201);
 
 const {
   booleanLiteral,
@@ -47471,7 +55438,7 @@ function chunk(array, size) {
 }
 
 /***/ }),
-/* 160 */
+/* 184 */
 /*!***************************************!*\
   !*** ./node_modules/assert/assert.js ***!
   \***************************************/
@@ -47481,7 +55448,7 @@ function chunk(array, size) {
 "use strict";
 /* WEBPACK VAR INJECTION */(function(global) {
 
-var objectAssign = __webpack_require__(/*! object-assign */ 161);
+var objectAssign = __webpack_require__(/*! object-assign */ 185);
 
 // compare and isBuffer taken from https://github.com/feross/buffer/blob/680e9e5e488f22aac27599a57dc844a6315928dd/index.js
 // original notice:
@@ -47551,7 +55518,7 @@ function isBuffer(b) {
 // ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-var util = __webpack_require__(/*! util/ */ 162);
+var util = __webpack_require__(/*! util/ */ 186);
 var hasOwn = Object.prototype.hasOwnProperty;
 var pSlice = Array.prototype.slice;
 var functionsHaveNames = (function () {
@@ -47986,10 +55953,10 @@ var objectKeys = Object.keys || function (obj) {
   return keys;
 };
 
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../webpack/buildin/global.js */ 118)))
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../webpack/buildin/global.js */ 131)))
 
 /***/ }),
-/* 161 */
+/* 185 */
 /*!*********************************************!*\
   !*** ./node_modules/object-assign/index.js ***!
   \*********************************************/
@@ -48090,7 +56057,7 @@ module.exports = shouldUseNative() ? Object.assign : function (target, source) {
 
 
 /***/ }),
-/* 162 */
+/* 186 */
 /*!***********************************!*\
   !*** ./node_modules/util/util.js ***!
   \***********************************/
@@ -48632,7 +56599,7 @@ function isPrimitive(arg) {
 }
 exports.isPrimitive = isPrimitive;
 
-exports.isBuffer = __webpack_require__(/*! ./support/isBuffer */ 163);
+exports.isBuffer = __webpack_require__(/*! ./support/isBuffer */ 187);
 
 function objectToString(o) {
   return Object.prototype.toString.call(o);
@@ -48676,7 +56643,7 @@ exports.log = function() {
  *     prototype.
  * @param {function} superCtor Constructor function to inherit prototype from.
  */
-exports.inherits = __webpack_require__(/*! inherits */ 164);
+exports.inherits = __webpack_require__(/*! inherits */ 188);
 
 exports._extend = function(origin, add) {
   // Don't do anything if add isn't an object
@@ -48804,7 +56771,7 @@ exports.callbackify = callbackify;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../process/browser.js */ 22)))
 
 /***/ }),
-/* 163 */
+/* 187 */
 /*!******************************************************!*\
   !*** ./node_modules/util/support/isBufferBrowser.js ***!
   \******************************************************/
@@ -48819,7 +56786,7 @@ module.exports = function isBuffer(arg) {
 }
 
 /***/ }),
-/* 164 */
+/* 188 */
 /*!*********************************************************************!*\
   !*** ./node_modules/util/node_modules/inherits/inherits_browser.js ***!
   \*********************************************************************/
@@ -48852,7 +56819,7 @@ if (typeof Object.create === 'function') {
 
 
 /***/ }),
-/* 165 */
+/* 189 */
 /*!****************************************************************!*\
   !*** ./node_modules/@babel/helper-module-imports/lib/index.js ***!
   \****************************************************************/
@@ -48882,9 +56849,9 @@ Object.defineProperty(exports, "isModule", {
   }
 });
 
-var _importInjector = __webpack_require__(/*! ./import-injector */ 166);
+var _importInjector = __webpack_require__(/*! ./import-injector */ 190);
 
-var _isModule = __webpack_require__(/*! ./is-module */ 168);
+var _isModule = __webpack_require__(/*! ./is-module */ 192);
 
 function addDefault(path, importedSource, opts) {
   return new _importInjector.default(path).addDefault(importedSource, opts);
@@ -48903,7 +56870,7 @@ function addSideEffect(path, importedSource, opts) {
 }
 
 /***/ }),
-/* 166 */
+/* 190 */
 /*!**************************************************************************!*\
   !*** ./node_modules/@babel/helper-module-imports/lib/import-injector.js ***!
   \**************************************************************************/
@@ -48918,13 +56885,13 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = void 0;
 
-var _assert = __webpack_require__(/*! assert */ 160);
+var _assert = __webpack_require__(/*! assert */ 184);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var _importBuilder = __webpack_require__(/*! ./import-builder */ 167);
+var _importBuilder = __webpack_require__(/*! ./import-builder */ 191);
 
-var _isModule = __webpack_require__(/*! ./is-module */ 168);
+var _isModule = __webpack_require__(/*! ./is-module */ 192);
 
 const {
   numericLiteral,
@@ -49203,7 +57170,7 @@ class ImportInjector {
 exports.default = ImportInjector;
 
 /***/ }),
-/* 167 */
+/* 191 */
 /*!*************************************************************************!*\
   !*** ./node_modules/@babel/helper-module-imports/lib/import-builder.js ***!
   \*************************************************************************/
@@ -49218,7 +57185,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = void 0;
 
-var _assert = __webpack_require__(/*! assert */ 160);
+var _assert = __webpack_require__(/*! assert */ 184);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
@@ -49375,7 +57342,7 @@ class ImportBuilder {
 exports.default = ImportBuilder;
 
 /***/ }),
-/* 168 */
+/* 192 */
 /*!********************************************************************!*\
   !*** ./node_modules/@babel/helper-module-imports/lib/is-module.js ***!
   \********************************************************************/
@@ -49403,7 +57370,7 @@ function isModule(path) {
 }
 
 /***/ }),
-/* 169 */
+/* 193 */
 /*!**************************************************************************!*\
   !*** ./node_modules/@babel/helper-module-transforms/lib/rewrite-this.js ***!
   \**************************************************************************/
@@ -49418,7 +57385,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = rewriteThis;
 
-var _helperReplaceSupers = __webpack_require__(/*! @babel/helper-replace-supers */ 170);
+var _helperReplaceSupers = __webpack_require__(/*! @babel/helper-replace-supers */ 194);
 
 var _traverse = __webpack_require__(/*! @babel/traverse */ 4);
 
@@ -49443,7 +57410,7 @@ const rewriteThisVisitor = _traverse.default.visitors.merge([_helperReplaceSuper
 }]);
 
 /***/ }),
-/* 170 */
+/* 194 */
 /*!****************************************************************!*\
   !*** ./node_modules/@babel/helper-replace-supers/lib/index.js ***!
   \****************************************************************/
@@ -49461,9 +57428,9 @@ exports.default = exports.environmentVisitor = void 0;
 
 var _traverse = __webpack_require__(/*! @babel/traverse */ 4);
 
-var _helperMemberExpressionToFunctions = __webpack_require__(/*! @babel/helper-member-expression-to-functions */ 171);
+var _helperMemberExpressionToFunctions = __webpack_require__(/*! @babel/helper-member-expression-to-functions */ 195);
 
-var _helperOptimiseCallExpression = __webpack_require__(/*! @babel/helper-optimise-call-expression */ 172);
+var _helperOptimiseCallExpression = __webpack_require__(/*! @babel/helper-optimise-call-expression */ 196);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
@@ -49746,7 +57713,7 @@ class ReplaceSupers {
 exports.default = ReplaceSupers;
 
 /***/ }),
-/* 171 */
+/* 195 */
 /*!********************************************************************************!*\
   !*** ./node_modules/@babel/helper-member-expression-to-functions/lib/index.js ***!
   \********************************************************************************/
@@ -50210,7 +58177,7 @@ exports.default = memberExpressionToFunctions;
 
 
 /***/ }),
-/* 172 */
+/* 196 */
 /*!**************************************************************************!*\
   !*** ./node_modules/@babel/helper-optimise-call-expression/lib/index.js ***!
   \**************************************************************************/
@@ -50256,7 +58223,7 @@ function optimiseCallExpression(callee, thisNode, args, optional) {
 }
 
 /***/ }),
-/* 173 */
+/* 197 */
 /*!*************************************************************************************!*\
   !*** ./node_modules/@babel/helper-module-transforms/lib/rewrite-live-references.js ***!
   \*************************************************************************************/
@@ -50271,13 +58238,13 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = rewriteLiveReferences;
 
-var _assert = __webpack_require__(/*! assert */ 160);
+var _assert = __webpack_require__(/*! assert */ 184);
 
 var _t = __webpack_require__(/*! @babel/types */ 8);
 
-var _template = __webpack_require__(/*! @babel/template */ 141);
+var _template = __webpack_require__(/*! @babel/template */ 163);
 
-var _helperSimpleAccess = __webpack_require__(/*! @babel/helper-simple-access */ 174);
+var _helperSimpleAccess = __webpack_require__(/*! @babel/helper-simple-access */ 198);
 
 const {
   assignmentExpression,
@@ -50600,7 +58567,7 @@ const rewriteReferencesVisitor = {
 };
 
 /***/ }),
-/* 174 */
+/* 198 */
 /*!***************************************************************!*\
   !*** ./node_modules/@babel/helper-simple-access/lib/index.js ***!
   \***************************************************************/
@@ -50703,7 +58670,7 @@ const simpleAssignmentVisitor = {
 };
 
 /***/ }),
-/* 175 */
+/* 199 */
 /*!*****************************************************************************************!*\
   !*** ./node_modules/@babel/helper-module-transforms/lib/normalize-and-load-metadata.js ***!
   \*****************************************************************************************/
@@ -50721,11 +58688,11 @@ exports.isSideEffectImport = isSideEffectImport;
 exports.validateImportInteropOption = validateImportInteropOption;
 exports.default = normalizeModuleAndLoadMetadata;
 
-var _path = __webpack_require__(/*! path */ 176);
+var _path = __webpack_require__(/*! path */ 200);
 
 var _helperValidatorIdentifier = __webpack_require__(/*! @babel/helper-validator-identifier */ 27);
 
-var _helperSplitExportDeclaration = __webpack_require__(/*! @babel/helper-split-export-declaration */ 97);
+var _helperSplitExportDeclaration = __webpack_require__(/*! @babel/helper-split-export-declaration */ 99);
 
 function hasExports(metadata) {
   return metadata.hasExports;
@@ -51111,7 +59078,7 @@ function removeModuleDeclarations(programPath) {
 }
 
 /***/ }),
-/* 176 */
+/* 200 */
 /*!***********************************************!*\
   !*** ./node_modules/path-browserify/index.js ***!
   \***********************************************/
@@ -51424,7 +59391,7 @@ var substr = 'ab'.substr(-1) === 'b'
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../process/browser.js */ 22)))
 
 /***/ }),
-/* 177 */
+/* 201 */
 /*!*****************************************************************************!*\
   !*** ./node_modules/@babel/helper-module-transforms/lib/get-module-name.js ***!
   \*****************************************************************************/
@@ -51488,7 +59455,7 @@ function getModuleName(rootOpts, pluginOpts) {
 }
 
 /***/ }),
-/* 178 */
+/* 202 */
 /*!***************************************!*\
   !*** ./node_modules/semver/semver.js ***!
   \***************************************/
@@ -53095,7 +61062,7 @@ function coerce (version, options) {
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../process/browser.js */ 22)))
 
 /***/ }),
-/* 179 */
+/* 203 */
 /*!**********************************************************************!*\
   !*** ./node_modules/@babel/core/lib/tools/build-external-helpers.js ***!
   \**********************************************************************/
@@ -53121,7 +61088,7 @@ function helpers() {
 }
 
 function _generator() {
-  const data = __webpack_require__(/*! @babel/generator */ 100);
+  const data = __webpack_require__(/*! @babel/generator */ 103);
 
   _generator = function () {
     return data;
@@ -53131,7 +61098,7 @@ function _generator() {
 }
 
 function _template() {
-  const data = __webpack_require__(/*! @babel/template */ 141);
+  const data = __webpack_require__(/*! @babel/template */ 163);
 
   _template = function () {
     return data;
@@ -53269,7 +61236,7 @@ function _default(allowlist, outputType = "global") {
 }
 
 /***/ }),
-/* 180 */
+/* 204 */
 /*!********************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/files/index-browser.js ***!
   \********************************************************************/
@@ -53346,7 +61313,7 @@ function loadPreset(name, dirname) {
 }
 
 /***/ }),
-/* 181 */
+/* 205 */
 /*!********************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/helpers/environment.js ***!
   \********************************************************************/
@@ -53367,7 +61334,7 @@ function getEnv(defaultValue = "development") {
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../../../../../process/browser.js */ 22)))
 
 /***/ }),
-/* 182 */
+/* 206 */
 /*!******************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/index.js ***!
   \******************************************************/
@@ -53390,7 +61357,7 @@ Object.defineProperty(exports, "default", {
 exports.createConfigItemAsync = exports.createConfigItemSync = exports.loadOptionsAsync = exports.loadOptionsSync = exports.loadOptions = exports.loadPartialConfigAsync = exports.loadPartialConfigSync = exports.loadPartialConfig = void 0;
 
 function _gensync() {
-  const data = __webpack_require__(/*! gensync */ 183);
+  const data = __webpack_require__(/*! gensync */ 207);
 
   _gensync = function () {
     return data;
@@ -53399,11 +61366,11 @@ function _gensync() {
   return data;
 }
 
-var _full = __webpack_require__(/*! ./full */ 184);
+var _full = __webpack_require__(/*! ./full */ 208);
 
-var _partial = __webpack_require__(/*! ./partial */ 228);
+var _partial = __webpack_require__(/*! ./partial */ 252);
 
-var _item = __webpack_require__(/*! ./item */ 188);
+var _item = __webpack_require__(/*! ./item */ 212);
 
 const loadOptionsRunner = _gensync()(function* (opts) {
   var _config$options;
@@ -53451,7 +61418,7 @@ function createConfigItem(target, options, callback) {
 }
 
 /***/ }),
-/* 183 */
+/* 207 */
 /*!***************************************!*\
   !*** ./node_modules/gensync/index.js ***!
   \***************************************/
@@ -53835,7 +61802,7 @@ function setFunctionMetadata(name, arity, fn) {
 
 
 /***/ }),
-/* 184 */
+/* 208 */
 /*!*****************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/full.js ***!
   \*****************************************************/
@@ -53851,7 +61818,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.default = void 0;
 
 function _gensync() {
-  const data = __webpack_require__(/*! gensync */ 183);
+  const data = __webpack_require__(/*! gensync */ 207);
 
   _gensync = function () {
     return data;
@@ -53860,17 +61827,17 @@ function _gensync() {
   return data;
 }
 
-var _async = __webpack_require__(/*! ../gensync-utils/async */ 185);
+var _async = __webpack_require__(/*! ../gensync-utils/async */ 209);
 
-var _util = __webpack_require__(/*! ./util */ 186);
+var _util = __webpack_require__(/*! ./util */ 210);
 
 var context = __webpack_require__(/*! ../index */ 1);
 
-var _plugin = __webpack_require__(/*! ./plugin */ 187);
+var _plugin = __webpack_require__(/*! ./plugin */ 211);
 
-var _item = __webpack_require__(/*! ./item */ 188);
+var _item = __webpack_require__(/*! ./item */ 212);
 
-var _configChain = __webpack_require__(/*! ./config-chain */ 219);
+var _configChain = __webpack_require__(/*! ./config-chain */ 243);
 
 function _traverse() {
   const data = __webpack_require__(/*! @babel/traverse */ 4);
@@ -53882,17 +61849,17 @@ function _traverse() {
   return data;
 }
 
-var _caching = __webpack_require__(/*! ./caching */ 190);
+var _caching = __webpack_require__(/*! ./caching */ 214);
 
-var _options = __webpack_require__(/*! ./validation/options */ 220);
+var _options = __webpack_require__(/*! ./validation/options */ 244);
 
-var _plugins = __webpack_require__(/*! ./validation/plugins */ 225);
+var _plugins = __webpack_require__(/*! ./validation/plugins */ 249);
 
-var _configApi = __webpack_require__(/*! ./helpers/config-api */ 226);
+var _configApi = __webpack_require__(/*! ./helpers/config-api */ 250);
 
-var _partial = __webpack_require__(/*! ./partial */ 228);
+var _partial = __webpack_require__(/*! ./partial */ 252);
 
-var Context = __webpack_require__(/*! ./cache-contexts */ 227);
+var Context = __webpack_require__(/*! ./cache-contexts */ 251);
 
 var _default = _gensync()(function* loadFullConfig(inputOpts) {
   var _opts$assumptions;
@@ -54183,7 +62150,7 @@ function chain(a, b) {
 }
 
 /***/ }),
-/* 185 */
+/* 209 */
 /*!*************************************************************!*\
   !*** ./node_modules/@babel/core/lib/gensync-utils/async.js ***!
   \*************************************************************/
@@ -54202,7 +62169,7 @@ exports.isThenable = isThenable;
 exports.waitFor = exports.onFirstPause = exports.isAsync = void 0;
 
 function _gensync() {
-  const data = __webpack_require__(/*! gensync */ 183);
+  const data = __webpack_require__(/*! gensync */ 207);
 
   _gensync = function () {
     return data;
@@ -54286,7 +62253,7 @@ function isThenable(val) {
 }
 
 /***/ }),
-/* 186 */
+/* 210 */
 /*!*****************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/util.js ***!
   \*****************************************************/
@@ -54327,7 +62294,7 @@ function isIterableIterator(value) {
 }
 
 /***/ }),
-/* 187 */
+/* 211 */
 /*!*******************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/plugin.js ***!
   \*******************************************************/
@@ -54367,7 +62334,7 @@ class Plugin {
 exports.default = Plugin;
 
 /***/ }),
-/* 188 */
+/* 212 */
 /*!*****************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/item.js ***!
   \*****************************************************/
@@ -54385,7 +62352,7 @@ exports.createConfigItem = createConfigItem;
 exports.getItemDescriptor = getItemDescriptor;
 
 function _path() {
-  const data = __webpack_require__(/*! path */ 176);
+  const data = __webpack_require__(/*! path */ 200);
 
   _path = function () {
     return data;
@@ -54394,7 +62361,7 @@ function _path() {
   return data;
 }
 
-var _configDescriptors = __webpack_require__(/*! ./config-descriptors */ 189);
+var _configDescriptors = __webpack_require__(/*! ./config-descriptors */ 213);
 
 function createItemFromDescriptor(desc) {
   return new ConfigItem(desc);
@@ -54453,7 +62420,7 @@ class ConfigItem {
 Object.freeze(ConfigItem.prototype);
 
 /***/ }),
-/* 189 */
+/* 213 */
 /*!*******************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/config-descriptors.js ***!
   \*******************************************************************/
@@ -54471,7 +62438,7 @@ exports.createUncachedDescriptors = createUncachedDescriptors;
 exports.createDescriptor = createDescriptor;
 
 function _gensync() {
-  const data = __webpack_require__(/*! gensync */ 183);
+  const data = __webpack_require__(/*! gensync */ 207);
 
   _gensync = function () {
     return data;
@@ -54480,13 +62447,13 @@ function _gensync() {
   return data;
 }
 
-var _files = __webpack_require__(/*! ./files */ 180);
+var _files = __webpack_require__(/*! ./files */ 204);
 
-var _item = __webpack_require__(/*! ./item */ 188);
+var _item = __webpack_require__(/*! ./item */ 212);
 
-var _caching = __webpack_require__(/*! ./caching */ 190);
+var _caching = __webpack_require__(/*! ./caching */ 214);
 
-var _resolveTargets = __webpack_require__(/*! ./resolve-targets */ 191);
+var _resolveTargets = __webpack_require__(/*! ./resolve-targets */ 215);
 
 function isEqualDescriptor(a, b) {
   return a.name === b.name && a.value === b.value && a.options === b.options && a.dirname === b.dirname && a.alias === b.alias && a.ownPass === b.ownPass && (a.file && a.file.request) === (b.file && b.file.request) && (a.file && a.file.resolved) === (b.file && b.file.resolved);
@@ -54707,7 +62674,7 @@ function assertNoDuplicates(items) {
 }
 
 /***/ }),
-/* 190 */
+/* 214 */
 /*!********************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/caching.js ***!
   \********************************************************/
@@ -54727,7 +62694,7 @@ exports.makeStrongCacheSync = makeStrongCacheSync;
 exports.assertSimpleType = assertSimpleType;
 
 function _gensync() {
-  const data = __webpack_require__(/*! gensync */ 183);
+  const data = __webpack_require__(/*! gensync */ 207);
 
   _gensync = function () {
     return data;
@@ -54736,9 +62703,9 @@ function _gensync() {
   return data;
 }
 
-var _async = __webpack_require__(/*! ../gensync-utils/async */ 185);
+var _async = __webpack_require__(/*! ../gensync-utils/async */ 209);
 
-var _util = __webpack_require__(/*! ./util */ 186);
+var _util = __webpack_require__(/*! ./util */ 210);
 
 const synchronize = gen => {
   return _gensync()(gen).sync;
@@ -55042,7 +63009,7 @@ class Lock {
 }
 
 /***/ }),
-/* 191 */
+/* 215 */
 /*!************************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/resolve-targets-browser.js ***!
   \************************************************************************/
@@ -55059,7 +63026,7 @@ exports.resolveBrowserslistConfigFile = resolveBrowserslistConfigFile;
 exports.resolveTargets = resolveTargets;
 
 function _helperCompilationTargets() {
-  const data = __webpack_require__(/*! @babel/helper-compilation-targets */ 192);
+  const data = __webpack_require__(/*! @babel/helper-compilation-targets */ 216);
 
   _helperCompilationTargets = function () {
     return data;
@@ -55094,7 +63061,7 @@ function resolveTargets(options, root) {
 }
 
 /***/ }),
-/* 192 */
+/* 216 */
 /*!*********************************************************************!*\
   !*** ./node_modules/@babel/helper-compilation-targets/lib/index.js ***!
   \*********************************************************************/
@@ -55146,23 +63113,23 @@ Object.defineProperty(exports, "isRequired", {
   }
 });
 
-var _browserslist = __webpack_require__(/*! browserslist */ 193);
+var _browserslist = __webpack_require__(/*! browserslist */ 217);
 
-var _helperValidatorOption = __webpack_require__(/*! @babel/helper-validator-option */ 206);
+var _helperValidatorOption = __webpack_require__(/*! @babel/helper-validator-option */ 230);
 
-var _nativeModules = __webpack_require__(/*! @babel/compat-data/native-modules */ 209);
+var _nativeModules = __webpack_require__(/*! @babel/compat-data/native-modules */ 233);
 
-var _utils = __webpack_require__(/*! ./utils */ 211);
+var _utils = __webpack_require__(/*! ./utils */ 235);
 
-var _targets = __webpack_require__(/*! ./targets */ 212);
+var _targets = __webpack_require__(/*! ./targets */ 236);
 
-var _options = __webpack_require__(/*! ./options */ 213);
+var _options = __webpack_require__(/*! ./options */ 237);
 
-var _pretty = __webpack_require__(/*! ./pretty */ 214);
+var _pretty = __webpack_require__(/*! ./pretty */ 238);
 
-var _debug = __webpack_require__(/*! ./debug */ 215);
+var _debug = __webpack_require__(/*! ./debug */ 239);
 
-var _filterItems = __webpack_require__(/*! ./filter-items */ 216);
+var _filterItems = __webpack_require__(/*! ./filter-items */ 240);
 
 const ESM_SUPPORT = _nativeModules["es6.module"];
 const v = new _helperValidatorOption.OptionValidator("@babel/helper-compilation-targets");
@@ -55360,21 +63327,21 @@ function getTargets(inputTargets = {}, options = {}) {
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../../../process/browser.js */ 22)))
 
 /***/ }),
-/* 193 */
+/* 217 */
 /*!********************************************!*\
   !*** ./node_modules/browserslist/index.js ***!
   \********************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-/* WEBPACK VAR INJECTION */(function(process) {var jsReleases = __webpack_require__(/*! node-releases/data/processed/envs.json */ 194)
-var agents = __webpack_require__(/*! caniuse-lite/dist/unpacker/agents */ 195).agents
-var jsEOL = __webpack_require__(/*! node-releases/data/release-schedule/release-schedule.json */ 201)
-var path = __webpack_require__(/*! path */ 202)
-var e2c = __webpack_require__(/*! electron-to-chromium/versions */ 203)
+/* WEBPACK VAR INJECTION */(function(process) {var jsReleases = __webpack_require__(/*! node-releases/data/processed/envs.json */ 218)
+var agents = __webpack_require__(/*! caniuse-lite/dist/unpacker/agents */ 219).agents
+var jsEOL = __webpack_require__(/*! node-releases/data/release-schedule/release-schedule.json */ 225)
+var path = __webpack_require__(/*! path */ 226)
+var e2c = __webpack_require__(/*! electron-to-chromium/versions */ 227)
 
-var BrowserslistError = __webpack_require__(/*! ./error */ 204)
-var env = __webpack_require__(/*! ./node */ 205) // Will load browser.js in webpack
+var BrowserslistError = __webpack_require__(/*! ./error */ 228)
+var env = __webpack_require__(/*! ./node */ 229) // Will load browser.js in webpack
 
 var YEAR = 365.259641 * 24 * 60 * 60 * 1000
 var ANDROID_EVERGREEN_FIRST = 37
@@ -56586,7 +64553,7 @@ module.exports = browserslist
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../process/browser.js */ 22)))
 
 /***/ }),
-/* 194 */
+/* 218 */
 /*!*************************************************************!*\
   !*** ./node_modules/node-releases/data/processed/envs.json ***!
   \*************************************************************/
@@ -56596,7 +64563,7 @@ module.exports = browserslist
 module.exports = JSON.parse("[{\"name\":\"nodejs\",\"version\":\"0.2.0\",\"date\":\"2011-08-26\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"0.3.0\",\"date\":\"2011-08-26\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"0.4.0\",\"date\":\"2011-08-26\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"0.5.0\",\"date\":\"2011-08-26\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"0.6.0\",\"date\":\"2011-11-04\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"0.7.0\",\"date\":\"2012-01-17\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"0.8.0\",\"date\":\"2012-06-22\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"0.9.0\",\"date\":\"2012-07-20\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"0.10.0\",\"date\":\"2013-03-11\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"0.11.0\",\"date\":\"2013-03-28\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"0.12.0\",\"date\":\"2015-02-06\",\"lts\":false,\"security\":false},{\"name\":\"iojs\",\"version\":\"1.0.0\",\"date\":\"2015-01-14\"},{\"name\":\"iojs\",\"version\":\"1.1.0\",\"date\":\"2015-02-03\"},{\"name\":\"iojs\",\"version\":\"1.2.0\",\"date\":\"2015-02-11\"},{\"name\":\"iojs\",\"version\":\"1.3.0\",\"date\":\"2015-02-20\"},{\"name\":\"iojs\",\"version\":\"1.5.0\",\"date\":\"2015-03-06\"},{\"name\":\"iojs\",\"version\":\"1.6.0\",\"date\":\"2015-03-20\"},{\"name\":\"iojs\",\"version\":\"2.0.0\",\"date\":\"2015-05-04\"},{\"name\":\"iojs\",\"version\":\"2.1.0\",\"date\":\"2015-05-24\"},{\"name\":\"iojs\",\"version\":\"2.2.0\",\"date\":\"2015-06-01\"},{\"name\":\"iojs\",\"version\":\"2.3.0\",\"date\":\"2015-06-13\"},{\"name\":\"iojs\",\"version\":\"2.4.0\",\"date\":\"2015-07-17\"},{\"name\":\"iojs\",\"version\":\"2.5.0\",\"date\":\"2015-07-28\"},{\"name\":\"iojs\",\"version\":\"3.0.0\",\"date\":\"2015-08-04\"},{\"name\":\"iojs\",\"version\":\"3.1.0\",\"date\":\"2015-08-19\"},{\"name\":\"iojs\",\"version\":\"3.2.0\",\"date\":\"2015-08-25\"},{\"name\":\"iojs\",\"version\":\"3.3.0\",\"date\":\"2015-09-02\"},{\"name\":\"nodejs\",\"version\":\"4.0.0\",\"date\":\"2015-09-08\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"4.1.0\",\"date\":\"2015-09-17\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"4.2.0\",\"date\":\"2015-10-12\",\"lts\":\"Argon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"4.3.0\",\"date\":\"2016-02-09\",\"lts\":\"Argon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"4.4.0\",\"date\":\"2016-03-08\",\"lts\":\"Argon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"4.5.0\",\"date\":\"2016-08-16\",\"lts\":\"Argon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"4.6.0\",\"date\":\"2016-09-27\",\"lts\":\"Argon\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"4.7.0\",\"date\":\"2016-12-06\",\"lts\":\"Argon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"4.8.0\",\"date\":\"2017-02-21\",\"lts\":\"Argon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"4.9.0\",\"date\":\"2018-03-28\",\"lts\":\"Argon\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"5.0.0\",\"date\":\"2015-10-29\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.1.0\",\"date\":\"2015-11-17\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.2.0\",\"date\":\"2015-12-09\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.3.0\",\"date\":\"2015-12-15\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.4.0\",\"date\":\"2016-01-06\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.5.0\",\"date\":\"2016-01-21\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.6.0\",\"date\":\"2016-02-09\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.7.0\",\"date\":\"2016-02-23\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.8.0\",\"date\":\"2016-03-09\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.9.0\",\"date\":\"2016-03-16\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.10.0\",\"date\":\"2016-04-01\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.11.0\",\"date\":\"2016-04-21\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"5.12.0\",\"date\":\"2016-06-23\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.0.0\",\"date\":\"2016-04-26\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.1.0\",\"date\":\"2016-05-05\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.2.0\",\"date\":\"2016-05-17\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.3.0\",\"date\":\"2016-07-06\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.4.0\",\"date\":\"2016-08-12\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.5.0\",\"date\":\"2016-08-26\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.6.0\",\"date\":\"2016-09-14\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.7.0\",\"date\":\"2016-09-27\",\"lts\":false,\"security\":true},{\"name\":\"nodejs\",\"version\":\"6.8.0\",\"date\":\"2016-10-12\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.9.0\",\"date\":\"2016-10-18\",\"lts\":\"Boron\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.10.0\",\"date\":\"2017-02-21\",\"lts\":\"Boron\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.11.0\",\"date\":\"2017-06-06\",\"lts\":\"Boron\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.12.0\",\"date\":\"2017-11-06\",\"lts\":\"Boron\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.13.0\",\"date\":\"2018-02-10\",\"lts\":\"Boron\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.14.0\",\"date\":\"2018-03-28\",\"lts\":\"Boron\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"6.15.0\",\"date\":\"2018-11-27\",\"lts\":\"Boron\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"6.16.0\",\"date\":\"2018-12-26\",\"lts\":\"Boron\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"6.17.0\",\"date\":\"2019-02-28\",\"lts\":\"Boron\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"7.0.0\",\"date\":\"2016-10-25\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"7.1.0\",\"date\":\"2016-11-08\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"7.2.0\",\"date\":\"2016-11-22\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"7.3.0\",\"date\":\"2016-12-20\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"7.4.0\",\"date\":\"2017-01-04\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"7.5.0\",\"date\":\"2017-01-31\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"7.6.0\",\"date\":\"2017-02-21\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"7.7.0\",\"date\":\"2017-02-28\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"7.8.0\",\"date\":\"2017-03-29\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"7.9.0\",\"date\":\"2017-04-11\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"7.10.0\",\"date\":\"2017-05-02\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.0.0\",\"date\":\"2017-05-30\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.1.0\",\"date\":\"2017-06-08\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.2.0\",\"date\":\"2017-07-19\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.3.0\",\"date\":\"2017-08-08\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.4.0\",\"date\":\"2017-08-15\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.5.0\",\"date\":\"2017-09-12\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.6.0\",\"date\":\"2017-09-26\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.7.0\",\"date\":\"2017-10-11\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.8.0\",\"date\":\"2017-10-24\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.9.0\",\"date\":\"2017-10-31\",\"lts\":\"Carbon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.10.0\",\"date\":\"2018-03-06\",\"lts\":\"Carbon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.11.0\",\"date\":\"2018-03-28\",\"lts\":\"Carbon\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"8.12.0\",\"date\":\"2018-09-10\",\"lts\":\"Carbon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.13.0\",\"date\":\"2018-11-20\",\"lts\":\"Carbon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.14.0\",\"date\":\"2018-11-27\",\"lts\":\"Carbon\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"8.15.0\",\"date\":\"2018-12-26\",\"lts\":\"Carbon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.16.0\",\"date\":\"2019-04-16\",\"lts\":\"Carbon\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"8.17.0\",\"date\":\"2019-12-17\",\"lts\":\"Carbon\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"9.0.0\",\"date\":\"2017-10-31\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"9.1.0\",\"date\":\"2017-11-07\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"9.2.0\",\"date\":\"2017-11-14\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"9.3.0\",\"date\":\"2017-12-12\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"9.4.0\",\"date\":\"2018-01-10\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"9.5.0\",\"date\":\"2018-01-31\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"9.6.0\",\"date\":\"2018-02-21\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"9.7.0\",\"date\":\"2018-03-01\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"9.8.0\",\"date\":\"2018-03-07\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"9.9.0\",\"date\":\"2018-03-21\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"9.10.0\",\"date\":\"2018-03-28\",\"lts\":false,\"security\":true},{\"name\":\"nodejs\",\"version\":\"9.11.0\",\"date\":\"2018-04-04\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.0.0\",\"date\":\"2018-04-24\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.1.0\",\"date\":\"2018-05-08\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.2.0\",\"date\":\"2018-05-23\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.3.0\",\"date\":\"2018-05-29\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.4.0\",\"date\":\"2018-06-06\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.5.0\",\"date\":\"2018-06-20\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.6.0\",\"date\":\"2018-07-04\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.7.0\",\"date\":\"2018-07-18\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.8.0\",\"date\":\"2018-08-01\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.9.0\",\"date\":\"2018-08-15\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.10.0\",\"date\":\"2018-09-06\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.11.0\",\"date\":\"2018-09-19\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.12.0\",\"date\":\"2018-10-10\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.13.0\",\"date\":\"2018-10-30\",\"lts\":\"Dubnium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.14.0\",\"date\":\"2018-11-27\",\"lts\":\"Dubnium\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"10.15.0\",\"date\":\"2018-12-26\",\"lts\":\"Dubnium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.16.0\",\"date\":\"2019-05-28\",\"lts\":\"Dubnium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.17.0\",\"date\":\"2019-10-22\",\"lts\":\"Dubnium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.18.0\",\"date\":\"2019-12-17\",\"lts\":\"Dubnium\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"10.19.0\",\"date\":\"2020-02-05\",\"lts\":\"Dubnium\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"10.20.0\",\"date\":\"2020-03-26\",\"lts\":\"Dubnium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.21.0\",\"date\":\"2020-06-02\",\"lts\":\"Dubnium\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"10.22.0\",\"date\":\"2020-07-21\",\"lts\":\"Dubnium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.23.0\",\"date\":\"2020-10-27\",\"lts\":\"Dubnium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"10.24.0\",\"date\":\"2021-02-23\",\"lts\":\"Dubnium\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"11.0.0\",\"date\":\"2018-10-23\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.1.0\",\"date\":\"2018-10-30\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.2.0\",\"date\":\"2018-11-15\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.3.0\",\"date\":\"2018-11-27\",\"lts\":false,\"security\":true},{\"name\":\"nodejs\",\"version\":\"11.4.0\",\"date\":\"2018-12-07\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.5.0\",\"date\":\"2018-12-18\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.6.0\",\"date\":\"2018-12-26\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.7.0\",\"date\":\"2019-01-17\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.8.0\",\"date\":\"2019-01-24\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.9.0\",\"date\":\"2019-01-30\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.10.0\",\"date\":\"2019-02-14\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.11.0\",\"date\":\"2019-03-05\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.12.0\",\"date\":\"2019-03-14\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.13.0\",\"date\":\"2019-03-28\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.14.0\",\"date\":\"2019-04-10\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"11.15.0\",\"date\":\"2019-04-30\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.0.0\",\"date\":\"2019-04-23\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.1.0\",\"date\":\"2019-04-29\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.2.0\",\"date\":\"2019-05-07\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.3.0\",\"date\":\"2019-05-21\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.4.0\",\"date\":\"2019-06-04\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.5.0\",\"date\":\"2019-06-26\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.6.0\",\"date\":\"2019-07-03\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.7.0\",\"date\":\"2019-07-23\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.8.0\",\"date\":\"2019-08-06\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.9.0\",\"date\":\"2019-08-20\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.10.0\",\"date\":\"2019-09-04\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.11.0\",\"date\":\"2019-09-25\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.12.0\",\"date\":\"2019-10-11\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.13.0\",\"date\":\"2019-10-21\",\"lts\":\"Erbium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.14.0\",\"date\":\"2019-12-17\",\"lts\":\"Erbium\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"12.15.0\",\"date\":\"2020-02-05\",\"lts\":\"Erbium\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"12.16.0\",\"date\":\"2020-02-11\",\"lts\":\"Erbium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.17.0\",\"date\":\"2020-05-26\",\"lts\":\"Erbium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.18.0\",\"date\":\"2020-06-02\",\"lts\":\"Erbium\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"12.19.0\",\"date\":\"2020-10-06\",\"lts\":\"Erbium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.20.0\",\"date\":\"2020-11-24\",\"lts\":\"Erbium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"12.21.0\",\"date\":\"2021-02-23\",\"lts\":\"Erbium\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"12.22.0\",\"date\":\"2021-03-30\",\"lts\":\"Erbium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.0.0\",\"date\":\"2019-10-22\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.1.0\",\"date\":\"2019-11-05\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.2.0\",\"date\":\"2019-11-21\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.3.0\",\"date\":\"2019-12-03\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.4.0\",\"date\":\"2019-12-17\",\"lts\":false,\"security\":true},{\"name\":\"nodejs\",\"version\":\"13.5.0\",\"date\":\"2019-12-18\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.6.0\",\"date\":\"2020-01-07\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.7.0\",\"date\":\"2020-01-21\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.8.0\",\"date\":\"2020-02-05\",\"lts\":false,\"security\":true},{\"name\":\"nodejs\",\"version\":\"13.9.0\",\"date\":\"2020-02-18\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.10.0\",\"date\":\"2020-03-04\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.11.0\",\"date\":\"2020-03-12\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.12.0\",\"date\":\"2020-03-26\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.13.0\",\"date\":\"2020-04-14\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"13.14.0\",\"date\":\"2020-04-29\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.0.0\",\"date\":\"2020-04-21\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.1.0\",\"date\":\"2020-04-29\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.2.0\",\"date\":\"2020-05-05\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.3.0\",\"date\":\"2020-05-19\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.4.0\",\"date\":\"2020-06-02\",\"lts\":false,\"security\":true},{\"name\":\"nodejs\",\"version\":\"14.5.0\",\"date\":\"2020-06-30\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.6.0\",\"date\":\"2020-07-20\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.7.0\",\"date\":\"2020-07-29\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.8.0\",\"date\":\"2020-08-11\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.9.0\",\"date\":\"2020-08-27\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.10.0\",\"date\":\"2020-09-08\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.11.0\",\"date\":\"2020-09-15\",\"lts\":false,\"security\":true},{\"name\":\"nodejs\",\"version\":\"14.12.0\",\"date\":\"2020-09-22\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.13.0\",\"date\":\"2020-09-29\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.14.0\",\"date\":\"2020-10-15\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.15.0\",\"date\":\"2020-10-27\",\"lts\":\"Fermium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"14.16.0\",\"date\":\"2021-02-23\",\"lts\":\"Fermium\",\"security\":true},{\"name\":\"nodejs\",\"version\":\"14.17.0\",\"date\":\"2021-05-11\",\"lts\":\"Fermium\",\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.0.0\",\"date\":\"2020-10-20\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.1.0\",\"date\":\"2020-11-04\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.2.0\",\"date\":\"2020-11-10\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.3.0\",\"date\":\"2020-11-24\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.4.0\",\"date\":\"2020-12-09\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.5.0\",\"date\":\"2020-12-22\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.6.0\",\"date\":\"2021-01-14\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.7.0\",\"date\":\"2021-01-25\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.8.0\",\"date\":\"2021-02-02\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.9.0\",\"date\":\"2021-02-18\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.10.0\",\"date\":\"2021-02-23\",\"lts\":false,\"security\":true},{\"name\":\"nodejs\",\"version\":\"15.11.0\",\"date\":\"2021-03-03\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.12.0\",\"date\":\"2021-03-17\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.13.0\",\"date\":\"2021-03-31\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"15.14.0\",\"date\":\"2021-04-06\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"16.0.0\",\"date\":\"2021-04-20\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"16.1.0\",\"date\":\"2021-05-04\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"16.2.0\",\"date\":\"2021-05-19\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"16.3.0\",\"date\":\"2021-06-03\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"16.4.0\",\"date\":\"2021-06-23\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"16.5.0\",\"date\":\"2021-07-14\",\"lts\":false,\"security\":false},{\"name\":\"nodejs\",\"version\":\"16.6.0\",\"date\":\"2021-07-29\",\"lts\":false,\"security\":true},{\"name\":\"nodejs\",\"version\":\"16.7.0\",\"date\":\"2021-08-18\",\"lts\":false,\"security\":false}]");
 
 /***/ }),
-/* 195 */
+/* 219 */
 /*!***********************************************************!*\
   !*** ./node_modules/caniuse-lite/dist/unpacker/agents.js ***!
   \***********************************************************/
@@ -56606,9 +64573,9 @@ module.exports = JSON.parse("[{\"name\":\"nodejs\",\"version\":\"0.2.0\",\"date\
 "use strict";
 
 
-const browsers = __webpack_require__(/*! ./browsers */ 196).browsers
-const versions = __webpack_require__(/*! ./browserVersions */ 198).browserVersions
-const agentsData = __webpack_require__(/*! ../../data/agents */ 200)
+const browsers = __webpack_require__(/*! ./browsers */ 220).browsers
+const versions = __webpack_require__(/*! ./browserVersions */ 222).browserVersions
+const agentsData = __webpack_require__(/*! ../../data/agents */ 224)
 
 function unpackBrowserVersions(versionsData) {
   return Object.keys(versionsData).reduce((usage, version) => {
@@ -56654,18 +64621,18 @@ module.exports.agents = Object.keys(agentsData).reduce((map, key) => {
 
 
 /***/ }),
-/* 196 */
+/* 220 */
 /*!*************************************************************!*\
   !*** ./node_modules/caniuse-lite/dist/unpacker/browsers.js ***!
   \*************************************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-module.exports.browsers = __webpack_require__(/*! ../../data/browsers */ 197)
+module.exports.browsers = __webpack_require__(/*! ../../data/browsers */ 221)
 
 
 /***/ }),
-/* 197 */
+/* 221 */
 /*!****************************************************!*\
   !*** ./node_modules/caniuse-lite/data/browsers.js ***!
   \****************************************************/
@@ -56676,18 +64643,18 @@ module.exports={A:"ie",B:"edge",C:"firefox",D:"chrome",E:"safari",F:"opera",G:"i
 
 
 /***/ }),
-/* 198 */
+/* 222 */
 /*!********************************************************************!*\
   !*** ./node_modules/caniuse-lite/dist/unpacker/browserVersions.js ***!
   \********************************************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-module.exports.browserVersions = __webpack_require__(/*! ../../data/browserVersions */ 199)
+module.exports.browserVersions = __webpack_require__(/*! ../../data/browserVersions */ 223)
 
 
 /***/ }),
-/* 199 */
+/* 223 */
 /*!***********************************************************!*\
   !*** ./node_modules/caniuse-lite/data/browserVersions.js ***!
   \***********************************************************/
@@ -56698,7 +64665,7 @@ module.exports={"0":"41","1":"42","2":"43","3":"44","4":"45","5":"46","6":"47","
 
 
 /***/ }),
-/* 200 */
+/* 224 */
 /*!**************************************************!*\
   !*** ./node_modules/caniuse-lite/data/agents.js ***!
   \**************************************************/
@@ -56709,7 +64676,7 @@ module.exports={A:{A:{J:0.0131217,D:0.00621152,E:0.0255585,F:0.115013,A:0.025558
 
 
 /***/ }),
-/* 201 */
+/* 225 */
 /*!********************************************************************************!*\
   !*** ./node_modules/node-releases/data/release-schedule/release-schedule.json ***!
   \********************************************************************************/
@@ -56719,7 +64686,7 @@ module.exports={A:{A:{J:0.0131217,D:0.00621152,E:0.0255585,F:0.115013,A:0.025558
 module.exports = JSON.parse("{\"v0.8\":{\"start\":\"2012-06-25\",\"end\":\"2014-07-31\"},\"v0.10\":{\"start\":\"2013-03-11\",\"end\":\"2016-10-31\"},\"v0.12\":{\"start\":\"2015-02-06\",\"end\":\"2016-12-31\"},\"v4\":{\"start\":\"2015-09-08\",\"lts\":\"2015-10-12\",\"maintenance\":\"2017-04-01\",\"end\":\"2018-04-30\",\"codename\":\"Argon\"},\"v5\":{\"start\":\"2015-10-29\",\"maintenance\":\"2016-04-30\",\"end\":\"2016-06-30\"},\"v6\":{\"start\":\"2016-04-26\",\"lts\":\"2016-10-18\",\"maintenance\":\"2018-04-30\",\"end\":\"2019-04-30\",\"codename\":\"Boron\"},\"v7\":{\"start\":\"2016-10-25\",\"maintenance\":\"2017-04-30\",\"end\":\"2017-06-30\"},\"v8\":{\"start\":\"2017-05-30\",\"lts\":\"2017-10-31\",\"maintenance\":\"2019-01-01\",\"end\":\"2019-12-31\",\"codename\":\"Carbon\"},\"v9\":{\"start\":\"2017-10-01\",\"maintenance\":\"2018-04-01\",\"end\":\"2018-06-30\"},\"v10\":{\"start\":\"2018-04-24\",\"lts\":\"2018-10-30\",\"maintenance\":\"2020-05-19\",\"end\":\"2021-04-30\",\"codename\":\"Dubnium\"},\"v11\":{\"start\":\"2018-10-23\",\"maintenance\":\"2019-04-22\",\"end\":\"2019-06-01\"},\"v12\":{\"start\":\"2019-04-23\",\"lts\":\"2019-10-21\",\"maintenance\":\"2020-11-30\",\"end\":\"2022-04-30\",\"codename\":\"Erbium\"},\"v13\":{\"start\":\"2019-10-22\",\"maintenance\":\"2020-04-01\",\"end\":\"2020-06-01\"},\"v14\":{\"start\":\"2020-04-21\",\"lts\":\"2020-10-27\",\"maintenance\":\"2021-10-19\",\"end\":\"2023-04-30\",\"codename\":\"Fermium\"},\"v15\":{\"start\":\"2020-10-20\",\"maintenance\":\"2021-04-01\",\"end\":\"2021-06-01\"},\"v16\":{\"start\":\"2021-04-20\",\"lts\":\"2021-10-26\",\"maintenance\":\"2022-10-18\",\"end\":\"2024-04-30\",\"codename\":\"\"},\"v17\":{\"start\":\"2021-10-19\",\"maintenance\":\"2022-04-01\",\"end\":\"2022-06-01\"},\"v18\":{\"start\":\"2022-04-19\",\"lts\":\"2022-10-25\",\"maintenance\":\"2023-10-18\",\"end\":\"2025-04-30\",\"codename\":\"\"}}");
 
 /***/ }),
-/* 202 */
+/* 226 */
 /*!**********************!*\
   !*** path (ignored) ***!
   \**********************/
@@ -56729,7 +64696,7 @@ module.exports = JSON.parse("{\"v0.8\":{\"start\":\"2012-06-25\",\"end\":\"2014-
 /* (ignored) */
 
 /***/ }),
-/* 203 */
+/* 227 */
 /*!*******************************************************!*\
   !*** ./node_modules/electron-to-chromium/versions.js ***!
   \*******************************************************/
@@ -56811,7 +64778,7 @@ module.exports = {
 };
 
 /***/ }),
-/* 204 */
+/* 228 */
 /*!********************************************!*\
   !*** ./node_modules/browserslist/error.js ***!
   \********************************************/
@@ -56833,14 +64800,14 @@ module.exports = BrowserslistError
 
 
 /***/ }),
-/* 205 */
+/* 229 */
 /*!**********************************************!*\
   !*** ./node_modules/browserslist/browser.js ***!
   \**********************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-var BrowserslistError = __webpack_require__(/*! ./error */ 204)
+var BrowserslistError = __webpack_require__(/*! ./error */ 228)
 
 function noop () { }
 
@@ -56889,7 +64856,7 @@ module.exports = {
 
 
 /***/ }),
-/* 206 */
+/* 230 */
 /*!******************************************************************!*\
   !*** ./node_modules/@babel/helper-validator-option/lib/index.js ***!
   \******************************************************************/
@@ -56915,12 +64882,12 @@ Object.defineProperty(exports, "findSuggestion", {
   }
 });
 
-var _validator = __webpack_require__(/*! ./validator */ 207);
+var _validator = __webpack_require__(/*! ./validator */ 231);
 
-var _findSuggestion = __webpack_require__(/*! ./find-suggestion */ 208);
+var _findSuggestion = __webpack_require__(/*! ./find-suggestion */ 232);
 
 /***/ }),
-/* 207 */
+/* 231 */
 /*!**********************************************************************!*\
   !*** ./node_modules/@babel/helper-validator-option/lib/validator.js ***!
   \**********************************************************************/
@@ -56935,7 +64902,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.OptionValidator = void 0;
 
-var _findSuggestion = __webpack_require__(/*! ./find-suggestion */ 208);
+var _findSuggestion = __webpack_require__(/*! ./find-suggestion */ 232);
 
 class OptionValidator {
   constructor(descriptor) {
@@ -56988,7 +64955,7 @@ class OptionValidator {
 exports.OptionValidator = OptionValidator;
 
 /***/ }),
-/* 208 */
+/* 232 */
 /*!****************************************************************************!*\
   !*** ./node_modules/@babel/helper-validator-option/lib/find-suggestion.js ***!
   \****************************************************************************/
@@ -57043,18 +65010,18 @@ function findSuggestion(str, arr) {
 }
 
 /***/ }),
-/* 209 */
+/* 233 */
 /*!***********************************************************!*\
   !*** ./node_modules/@babel/compat-data/native-modules.js ***!
   \***********************************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-module.exports = __webpack_require__(/*! ./data/native-modules.json */ 210);
+module.exports = __webpack_require__(/*! ./data/native-modules.json */ 234);
 
 
 /***/ }),
-/* 210 */
+/* 234 */
 /*!******************************************************************!*\
   !*** ./node_modules/@babel/compat-data/data/native-modules.json ***!
   \******************************************************************/
@@ -57064,7 +65031,7 @@ module.exports = __webpack_require__(/*! ./data/native-modules.json */ 210);
 module.exports = JSON.parse("{\"es6.module\":{\"chrome\":\"61\",\"and_chr\":\"61\",\"edge\":\"16\",\"firefox\":\"60\",\"and_ff\":\"60\",\"node\":\"13.2.0\",\"opera\":\"48\",\"op_mob\":\"48\",\"safari\":\"10.1\",\"ios\":\"10.3\",\"samsung\":\"8.2\",\"android\":\"61\",\"electron\":\"2.0\",\"ios_saf\":\"10.3\"}}");
 
 /***/ }),
-/* 211 */
+/* 235 */
 /*!*********************************************************************!*\
   !*** ./node_modules/@babel/helper-compilation-targets/lib/utils.js ***!
   \*********************************************************************/
@@ -57084,11 +65051,11 @@ exports.getLowestUnreleased = getLowestUnreleased;
 exports.getHighestUnreleased = getHighestUnreleased;
 exports.getLowestImplementedVersion = getLowestImplementedVersion;
 
-var _semver = __webpack_require__(/*! semver */ 178);
+var _semver = __webpack_require__(/*! semver */ 202);
 
-var _helperValidatorOption = __webpack_require__(/*! @babel/helper-validator-option */ 206);
+var _helperValidatorOption = __webpack_require__(/*! @babel/helper-validator-option */ 230);
 
-var _targets = __webpack_require__(/*! ./targets */ 212);
+var _targets = __webpack_require__(/*! ./targets */ 236);
 
 const versionRegExp = /^(\d+|\d+.\d+)$/;
 const v = new _helperValidatorOption.OptionValidator("@babel/helper-compilation-targets");
@@ -57143,7 +65110,7 @@ function getLowestImplementedVersion(plugin, environment) {
 }
 
 /***/ }),
-/* 212 */
+/* 236 */
 /*!***********************************************************************!*\
   !*** ./node_modules/@babel/helper-compilation-targets/lib/targets.js ***!
   \***********************************************************************/
@@ -57180,7 +65147,7 @@ const browserNameMap = {
 exports.browserNameMap = browserNameMap;
 
 /***/ }),
-/* 213 */
+/* 237 */
 /*!***********************************************************************!*\
   !*** ./node_modules/@babel/helper-compilation-targets/lib/options.js ***!
   \***********************************************************************/
@@ -57211,7 +65178,7 @@ const TargetNames = {
 exports.TargetNames = TargetNames;
 
 /***/ }),
-/* 214 */
+/* 238 */
 /*!**********************************************************************!*\
   !*** ./node_modules/@babel/helper-compilation-targets/lib/pretty.js ***!
   \**********************************************************************/
@@ -57227,9 +65194,9 @@ Object.defineProperty(exports, "__esModule", {
 exports.prettifyVersion = prettifyVersion;
 exports.prettifyTargets = prettifyTargets;
 
-var _semver = __webpack_require__(/*! semver */ 178);
+var _semver = __webpack_require__(/*! semver */ 202);
 
-var _targets = __webpack_require__(/*! ./targets */ 212);
+var _targets = __webpack_require__(/*! ./targets */ 236);
 
 function prettifyVersion(version) {
   if (typeof version !== "string") {
@@ -57268,7 +65235,7 @@ function prettifyTargets(targets) {
 }
 
 /***/ }),
-/* 215 */
+/* 239 */
 /*!*********************************************************************!*\
   !*** ./node_modules/@babel/helper-compilation-targets/lib/debug.js ***!
   \*********************************************************************/
@@ -57283,11 +65250,11 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.getInclusionReasons = getInclusionReasons;
 
-var _semver = __webpack_require__(/*! semver */ 178);
+var _semver = __webpack_require__(/*! semver */ 202);
 
-var _pretty = __webpack_require__(/*! ./pretty */ 214);
+var _pretty = __webpack_require__(/*! ./pretty */ 238);
 
-var _utils = __webpack_require__(/*! ./utils */ 211);
+var _utils = __webpack_require__(/*! ./utils */ 235);
 
 function getInclusionReasons(item, targetVersions, list) {
   const minVersions = list[item] || {};
@@ -57311,7 +65278,7 @@ function getInclusionReasons(item, targetVersions, list) {
 }
 
 /***/ }),
-/* 216 */
+/* 240 */
 /*!****************************************************************************!*\
   !*** ./node_modules/@babel/helper-compilation-targets/lib/filter-items.js ***!
   \****************************************************************************/
@@ -57328,11 +65295,11 @@ exports.targetsSupported = targetsSupported;
 exports.isRequired = isRequired;
 exports.default = filterItems;
 
-var _semver = __webpack_require__(/*! semver */ 178);
+var _semver = __webpack_require__(/*! semver */ 202);
 
-var _plugins = __webpack_require__(/*! @babel/compat-data/plugins */ 217);
+var _plugins = __webpack_require__(/*! @babel/compat-data/plugins */ 241);
 
-var _utils = __webpack_require__(/*! ./utils */ 211);
+var _utils = __webpack_require__(/*! ./utils */ 235);
 
 function targetsSupported(target, support) {
   const targetEnvironments = Object.keys(target);
@@ -57409,18 +65376,18 @@ function filterItems(list, includes, excludes, targets, defaultIncludes, default
 }
 
 /***/ }),
-/* 217 */
+/* 241 */
 /*!****************************************************!*\
   !*** ./node_modules/@babel/compat-data/plugins.js ***!
   \****************************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-module.exports = __webpack_require__(/*! ./data/plugins.json */ 218);
+module.exports = __webpack_require__(/*! ./data/plugins.json */ 242);
 
 
 /***/ }),
-/* 218 */
+/* 242 */
 /*!***********************************************************!*\
   !*** ./node_modules/@babel/compat-data/data/plugins.json ***!
   \***********************************************************/
@@ -57430,7 +65397,7 @@ module.exports = __webpack_require__(/*! ./data/plugins.json */ 218);
 module.exports = JSON.parse("{\"proposal-class-static-block\":{\"chrome\":\"91\",\"electron\":\"13.0\"},\"proposal-private-property-in-object\":{\"chrome\":\"91\",\"firefox\":\"90\",\"electron\":\"13.0\"},\"proposal-class-properties\":{\"chrome\":\"74\",\"opera\":\"62\",\"edge\":\"79\",\"firefox\":\"90\",\"safari\":\"14.1\",\"node\":\"12\",\"samsung\":\"11\",\"electron\":\"6.0\"},\"proposal-private-methods\":{\"chrome\":\"84\",\"opera\":\"70\",\"edge\":\"84\",\"firefox\":\"90\",\"safari\":\"15\",\"node\":\"14.6\",\"electron\":\"10.0\"},\"proposal-numeric-separator\":{\"chrome\":\"75\",\"opera\":\"62\",\"edge\":\"79\",\"firefox\":\"70\",\"safari\":\"13\",\"node\":\"12.5\",\"ios\":\"13\",\"samsung\":\"11\",\"electron\":\"6.0\"},\"proposal-logical-assignment-operators\":{\"chrome\":\"85\",\"opera\":\"71\",\"edge\":\"85\",\"firefox\":\"79\",\"safari\":\"14\",\"node\":\"15\",\"ios\":\"14\",\"electron\":\"10.0\"},\"proposal-nullish-coalescing-operator\":{\"chrome\":\"80\",\"opera\":\"67\",\"edge\":\"80\",\"firefox\":\"72\",\"safari\":\"13.1\",\"node\":\"14\",\"ios\":\"13.4\",\"samsung\":\"13\",\"electron\":\"8.0\"},\"proposal-optional-chaining\":{\"firefox\":\"74\",\"safari\":\"13.1\",\"ios\":\"13.4\"},\"proposal-json-strings\":{\"chrome\":\"66\",\"opera\":\"53\",\"edge\":\"79\",\"firefox\":\"62\",\"safari\":\"12\",\"node\":\"10\",\"ios\":\"12\",\"samsung\":\"9\",\"electron\":\"3.0\"},\"proposal-optional-catch-binding\":{\"chrome\":\"66\",\"opera\":\"53\",\"edge\":\"79\",\"firefox\":\"58\",\"safari\":\"11.1\",\"node\":\"10\",\"ios\":\"11.3\",\"samsung\":\"9\",\"electron\":\"3.0\"},\"transform-parameters\":{\"chrome\":\"49\",\"opera\":\"36\",\"edge\":\"18\",\"firefox\":\"53\",\"safari\":\"10\",\"node\":\"6\",\"ios\":\"10\",\"samsung\":\"5\",\"electron\":\"0.37\"},\"proposal-async-generator-functions\":{\"chrome\":\"63\",\"opera\":\"50\",\"edge\":\"79\",\"firefox\":\"57\",\"safari\":\"12\",\"node\":\"10\",\"ios\":\"12\",\"samsung\":\"8\",\"electron\":\"3.0\"},\"proposal-object-rest-spread\":{\"chrome\":\"60\",\"opera\":\"47\",\"edge\":\"79\",\"firefox\":\"55\",\"safari\":\"11.1\",\"node\":\"8.3\",\"ios\":\"11.3\",\"samsung\":\"8\",\"electron\":\"2.0\"},\"transform-dotall-regex\":{\"chrome\":\"62\",\"opera\":\"49\",\"edge\":\"79\",\"firefox\":\"78\",\"safari\":\"11.1\",\"node\":\"8.10\",\"ios\":\"11.3\",\"samsung\":\"8\",\"electron\":\"3.0\"},\"proposal-unicode-property-regex\":{\"chrome\":\"64\",\"opera\":\"51\",\"edge\":\"79\",\"firefox\":\"78\",\"safari\":\"11.1\",\"node\":\"10\",\"ios\":\"11.3\",\"samsung\":\"9\",\"electron\":\"3.0\"},\"transform-named-capturing-groups-regex\":{\"chrome\":\"64\",\"opera\":\"51\",\"edge\":\"79\",\"firefox\":\"78\",\"safari\":\"11.1\",\"node\":\"10\",\"ios\":\"11.3\",\"samsung\":\"9\",\"electron\":\"3.0\"},\"transform-async-to-generator\":{\"chrome\":\"55\",\"opera\":\"42\",\"edge\":\"15\",\"firefox\":\"52\",\"safari\":\"11\",\"node\":\"7.6\",\"ios\":\"11\",\"samsung\":\"6\",\"electron\":\"1.6\"},\"transform-exponentiation-operator\":{\"chrome\":\"52\",\"opera\":\"39\",\"edge\":\"14\",\"firefox\":\"52\",\"safari\":\"10.1\",\"node\":\"7\",\"ios\":\"10.3\",\"samsung\":\"6\",\"electron\":\"1.3\"},\"transform-template-literals\":{\"chrome\":\"41\",\"opera\":\"28\",\"edge\":\"13\",\"firefox\":\"34\",\"safari\":\"13\",\"node\":\"4\",\"ios\":\"13\",\"samsung\":\"3.4\",\"electron\":\"0.21\"},\"transform-literals\":{\"chrome\":\"44\",\"opera\":\"31\",\"edge\":\"12\",\"firefox\":\"53\",\"safari\":\"9\",\"node\":\"4\",\"ios\":\"9\",\"samsung\":\"4\",\"electron\":\"0.30\"},\"transform-function-name\":{\"chrome\":\"51\",\"opera\":\"38\",\"edge\":\"79\",\"firefox\":\"53\",\"safari\":\"10\",\"node\":\"6.5\",\"ios\":\"10\",\"samsung\":\"5\",\"electron\":\"1.2\"},\"transform-arrow-functions\":{\"chrome\":\"47\",\"opera\":\"34\",\"edge\":\"13\",\"firefox\":\"43\",\"safari\":\"10\",\"node\":\"6\",\"ios\":\"10\",\"samsung\":\"5\",\"rhino\":\"1.7.13\",\"electron\":\"0.36\"},\"transform-block-scoped-functions\":{\"chrome\":\"41\",\"opera\":\"28\",\"edge\":\"12\",\"firefox\":\"46\",\"safari\":\"10\",\"node\":\"4\",\"ie\":\"11\",\"ios\":\"10\",\"samsung\":\"3.4\",\"electron\":\"0.21\"},\"transform-classes\":{\"chrome\":\"46\",\"opera\":\"33\",\"edge\":\"13\",\"firefox\":\"45\",\"safari\":\"10\",\"node\":\"5\",\"ios\":\"10\",\"samsung\":\"5\",\"electron\":\"0.36\"},\"transform-object-super\":{\"chrome\":\"46\",\"opera\":\"33\",\"edge\":\"13\",\"firefox\":\"45\",\"safari\":\"10\",\"node\":\"5\",\"ios\":\"10\",\"samsung\":\"5\",\"electron\":\"0.36\"},\"transform-shorthand-properties\":{\"chrome\":\"43\",\"opera\":\"30\",\"edge\":\"12\",\"firefox\":\"33\",\"safari\":\"9\",\"node\":\"4\",\"ios\":\"9\",\"samsung\":\"4\",\"electron\":\"0.27\"},\"transform-duplicate-keys\":{\"chrome\":\"42\",\"opera\":\"29\",\"edge\":\"12\",\"firefox\":\"34\",\"safari\":\"9\",\"node\":\"4\",\"ios\":\"9\",\"samsung\":\"3.4\",\"electron\":\"0.25\"},\"transform-computed-properties\":{\"chrome\":\"44\",\"opera\":\"31\",\"edge\":\"12\",\"firefox\":\"34\",\"safari\":\"7.1\",\"node\":\"4\",\"ios\":\"8\",\"samsung\":\"4\",\"electron\":\"0.30\"},\"transform-for-of\":{\"chrome\":\"51\",\"opera\":\"38\",\"edge\":\"15\",\"firefox\":\"53\",\"safari\":\"10\",\"node\":\"6.5\",\"ios\":\"10\",\"samsung\":\"5\",\"electron\":\"1.2\"},\"transform-sticky-regex\":{\"chrome\":\"49\",\"opera\":\"36\",\"edge\":\"13\",\"firefox\":\"3\",\"safari\":\"10\",\"node\":\"6\",\"ios\":\"10\",\"samsung\":\"5\",\"electron\":\"0.37\"},\"transform-unicode-escapes\":{\"chrome\":\"44\",\"opera\":\"31\",\"edge\":\"12\",\"firefox\":\"53\",\"safari\":\"9\",\"node\":\"4\",\"ios\":\"9\",\"samsung\":\"4\",\"electron\":\"0.30\"},\"transform-unicode-regex\":{\"chrome\":\"50\",\"opera\":\"37\",\"edge\":\"13\",\"firefox\":\"46\",\"safari\":\"12\",\"node\":\"6\",\"ios\":\"12\",\"samsung\":\"5\",\"electron\":\"1.1\"},\"transform-spread\":{\"chrome\":\"46\",\"opera\":\"33\",\"edge\":\"13\",\"firefox\":\"45\",\"safari\":\"10\",\"node\":\"5\",\"ios\":\"10\",\"samsung\":\"5\",\"electron\":\"0.36\"},\"transform-destructuring\":{\"chrome\":\"51\",\"opera\":\"38\",\"edge\":\"15\",\"firefox\":\"53\",\"safari\":\"10\",\"node\":\"6.5\",\"ios\":\"10\",\"samsung\":\"5\",\"electron\":\"1.2\"},\"transform-block-scoping\":{\"chrome\":\"49\",\"opera\":\"36\",\"edge\":\"14\",\"firefox\":\"51\",\"safari\":\"11\",\"node\":\"6\",\"ios\":\"11\",\"samsung\":\"5\",\"electron\":\"0.37\"},\"transform-typeof-symbol\":{\"chrome\":\"38\",\"opera\":\"25\",\"edge\":\"12\",\"firefox\":\"36\",\"safari\":\"9\",\"node\":\"0.12\",\"ios\":\"9\",\"samsung\":\"3\",\"rhino\":\"1.7.13\",\"electron\":\"0.20\"},\"transform-new-target\":{\"chrome\":\"46\",\"opera\":\"33\",\"edge\":\"14\",\"firefox\":\"45\",\"safari\":\"10\",\"node\":\"5\",\"ios\":\"10\",\"samsung\":\"5\",\"electron\":\"0.36\"},\"transform-regenerator\":{\"chrome\":\"50\",\"opera\":\"37\",\"edge\":\"13\",\"firefox\":\"53\",\"safari\":\"10\",\"node\":\"6\",\"ios\":\"10\",\"samsung\":\"5\",\"electron\":\"1.1\"},\"transform-member-expression-literals\":{\"chrome\":\"7\",\"opera\":\"12\",\"edge\":\"12\",\"firefox\":\"2\",\"safari\":\"5.1\",\"node\":\"0.10\",\"ie\":\"9\",\"android\":\"4\",\"ios\":\"6\",\"phantom\":\"2\",\"samsung\":\"1\",\"rhino\":\"1.7.13\",\"electron\":\"0.20\"},\"transform-property-literals\":{\"chrome\":\"7\",\"opera\":\"12\",\"edge\":\"12\",\"firefox\":\"2\",\"safari\":\"5.1\",\"node\":\"0.10\",\"ie\":\"9\",\"android\":\"4\",\"ios\":\"6\",\"phantom\":\"2\",\"samsung\":\"1\",\"rhino\":\"1.7.13\",\"electron\":\"0.20\"},\"transform-reserved-words\":{\"chrome\":\"13\",\"opera\":\"10.50\",\"edge\":\"12\",\"firefox\":\"2\",\"safari\":\"3.1\",\"node\":\"0.10\",\"ie\":\"9\",\"android\":\"4.4\",\"ios\":\"6\",\"phantom\":\"2\",\"samsung\":\"1\",\"rhino\":\"1.7.13\",\"electron\":\"0.20\"},\"proposal-export-namespace-from\":{\"chrome\":\"72\",\"and_chr\":\"72\",\"edge\":\"79\",\"firefox\":\"80\",\"and_ff\":\"80\",\"node\":\"13.2\",\"opera\":\"60\",\"op_mob\":\"51\",\"samsung\":\"11.0\",\"android\":\"72\",\"electron\":\"5.0\"}}");
 
 /***/ }),
-/* 219 */
+/* 243 */
 /*!*************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/config-chain.js ***!
   \*************************************************************/
@@ -57448,7 +65415,7 @@ exports.buildRootChain = buildRootChain;
 exports.buildPresetChainWalker = void 0;
 
 function _path() {
-  const data = __webpack_require__(/*! path */ 176);
+  const data = __webpack_require__(/*! path */ 200);
 
   _path = function () {
     return data;
@@ -57467,17 +65434,17 @@ function _debug() {
   return data;
 }
 
-var _options = __webpack_require__(/*! ./validation/options */ 220);
+var _options = __webpack_require__(/*! ./validation/options */ 244);
 
-var _patternToRegex = __webpack_require__(/*! ./pattern-to-regex */ 223);
+var _patternToRegex = __webpack_require__(/*! ./pattern-to-regex */ 247);
 
-var _printer = __webpack_require__(/*! ./printer */ 224);
+var _printer = __webpack_require__(/*! ./printer */ 248);
 
-var _files = __webpack_require__(/*! ./files */ 180);
+var _files = __webpack_require__(/*! ./files */ 204);
 
-var _caching = __webpack_require__(/*! ./caching */ 190);
+var _caching = __webpack_require__(/*! ./caching */ 214);
 
-var _configDescriptors = __webpack_require__(/*! ./config-descriptors */ 189);
+var _configDescriptors = __webpack_require__(/*! ./config-descriptors */ 213);
 
 const debug = _debug()("babel:config:config-chain");
 
@@ -57996,7 +65963,7 @@ function matchPattern(pattern, dirname, pathToTest, context) {
 }
 
 /***/ }),
-/* 220 */
+/* 244 */
 /*!*******************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/validation/options.js ***!
   \*******************************************************************/
@@ -58013,11 +65980,11 @@ exports.validate = validate;
 exports.checkNoUnwrappedItemOptionPairs = checkNoUnwrappedItemOptionPairs;
 exports.assumptionsNames = void 0;
 
-var _plugin = __webpack_require__(/*! ../plugin */ 187);
+var _plugin = __webpack_require__(/*! ../plugin */ 211);
 
-var _removed = __webpack_require__(/*! ./removed */ 221);
+var _removed = __webpack_require__(/*! ./removed */ 245);
 
-var _optionAssertions = __webpack_require__(/*! ./option-assertions */ 222);
+var _optionAssertions = __webpack_require__(/*! ./option-assertions */ 246);
 
 const ROOT_VALIDATORS = {
   cwd: _optionAssertions.assertString,
@@ -58216,7 +66183,7 @@ function checkNoUnwrappedItemOptionPairs(items, index, type, e) {
 }
 
 /***/ }),
-/* 221 */
+/* 245 */
 /*!*******************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/validation/removed.js ***!
   \*******************************************************************/
@@ -58292,7 +66259,7 @@ var _default = {
 exports.default = _default;
 
 /***/ }),
-/* 222 */
+/* 246 */
 /*!*****************************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/validation/option-assertions.js ***!
   \*****************************************************************************/
@@ -58327,7 +66294,7 @@ exports.assertTargets = assertTargets;
 exports.assertAssumptions = assertAssumptions;
 
 function _helperCompilationTargets() {
-  const data = __webpack_require__(/*! @babel/helper-compilation-targets */ 192);
+  const data = __webpack_require__(/*! @babel/helper-compilation-targets */ 216);
 
   _helperCompilationTargets = function () {
     return data;
@@ -58336,7 +66303,7 @@ function _helperCompilationTargets() {
   return data;
 }
 
-var _options = __webpack_require__(/*! ./options */ 220);
+var _options = __webpack_require__(/*! ./options */ 244);
 
 function msg(loc) {
   switch (loc.type) {
@@ -58654,7 +66621,7 @@ function assertAssumptions(loc, value) {
 }
 
 /***/ }),
-/* 223 */
+/* 247 */
 /*!*****************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/pattern-to-regex.js ***!
   \*****************************************************************/
@@ -58670,7 +66637,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.default = pathToPattern;
 
 function _path() {
-  const data = __webpack_require__(/*! path */ 176);
+  const data = __webpack_require__(/*! path */ 200);
 
   _path = function () {
     return data;
@@ -58708,7 +66675,7 @@ function pathToPattern(pattern, dirname) {
 }
 
 /***/ }),
-/* 224 */
+/* 248 */
 /*!********************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/printer.js ***!
   \********************************************************/
@@ -58724,7 +66691,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.ConfigPrinter = exports.ChainFormatter = void 0;
 
 function _gensync() {
-  const data = __webpack_require__(/*! gensync */ 183);
+  const data = __webpack_require__(/*! gensync */ 207);
 
   _gensync = function () {
     return data;
@@ -58857,7 +66824,7 @@ class ConfigPrinter {
 exports.ConfigPrinter = ConfigPrinter;
 
 /***/ }),
-/* 225 */
+/* 249 */
 /*!*******************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/validation/plugins.js ***!
   \*******************************************************************/
@@ -58872,7 +66839,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.validatePluginObject = validatePluginObject;
 
-var _optionAssertions = __webpack_require__(/*! ./option-assertions */ 222);
+var _optionAssertions = __webpack_require__(/*! ./option-assertions */ 246);
 
 const VALIDATORS = {
   name: _optionAssertions.assertString,
@@ -58938,7 +66905,7 @@ function validatePluginObject(obj) {
 }
 
 /***/ }),
-/* 226 */
+/* 250 */
 /*!*******************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/helpers/config-api.js ***!
   \*******************************************************************/
@@ -58956,7 +66923,7 @@ exports.makePresetAPI = makePresetAPI;
 exports.makePluginAPI = makePluginAPI;
 
 function _semver() {
-  const data = __webpack_require__(/*! semver */ 178);
+  const data = __webpack_require__(/*! semver */ 202);
 
   _semver = function () {
     return data;
@@ -58967,9 +66934,9 @@ function _semver() {
 
 var _ = __webpack_require__(/*! ../../ */ 1);
 
-var _caching = __webpack_require__(/*! ../caching */ 190);
+var _caching = __webpack_require__(/*! ../caching */ 214);
 
-var Context = __webpack_require__(/*! ../cache-contexts */ 227);
+var Context = __webpack_require__(/*! ../cache-contexts */ 251);
 
 function makeConfigAPI(cache) {
   const env = value => cache.using(data => {
@@ -59051,7 +67018,7 @@ function assertVersion(range) {
 }
 
 /***/ }),
-/* 227 */
+/* 251 */
 /*!***************************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/cache-contexts.js ***!
   \***************************************************************/
@@ -59061,7 +67028,7 @@ function assertVersion(range) {
 
 
 /***/ }),
-/* 228 */
+/* 252 */
 /*!********************************************************!*\
   !*** ./node_modules/@babel/core/lib/config/partial.js ***!
   \********************************************************/
@@ -59078,7 +67045,7 @@ exports.default = loadPrivatePartialConfig;
 exports.loadPartialConfig = void 0;
 
 function _path() {
-  const data = __webpack_require__(/*! path */ 176);
+  const data = __webpack_require__(/*! path */ 200);
 
   _path = function () {
     return data;
@@ -59088,7 +67055,7 @@ function _path() {
 }
 
 function _gensync() {
-  const data = __webpack_require__(/*! gensync */ 183);
+  const data = __webpack_require__(/*! gensync */ 207);
 
   _gensync = function () {
     return data;
@@ -59097,21 +67064,21 @@ function _gensync() {
   return data;
 }
 
-var _plugin = __webpack_require__(/*! ./plugin */ 187);
+var _plugin = __webpack_require__(/*! ./plugin */ 211);
 
-var _util = __webpack_require__(/*! ./util */ 186);
+var _util = __webpack_require__(/*! ./util */ 210);
 
-var _item = __webpack_require__(/*! ./item */ 188);
+var _item = __webpack_require__(/*! ./item */ 212);
 
-var _configChain = __webpack_require__(/*! ./config-chain */ 219);
+var _configChain = __webpack_require__(/*! ./config-chain */ 243);
 
-var _environment = __webpack_require__(/*! ./helpers/environment */ 181);
+var _environment = __webpack_require__(/*! ./helpers/environment */ 205);
 
-var _options = __webpack_require__(/*! ./validation/options */ 220);
+var _options = __webpack_require__(/*! ./validation/options */ 244);
 
-var _files = __webpack_require__(/*! ./files */ 180);
+var _files = __webpack_require__(/*! ./files */ 204);
 
-var _resolveTargets = __webpack_require__(/*! ./resolve-targets */ 191);
+var _resolveTargets = __webpack_require__(/*! ./resolve-targets */ 215);
 
 const _excluded = ["showIgnoredFiles"];
 
@@ -59268,7 +67235,7 @@ class PartialConfig {
 Object.freeze(PartialConfig.prototype);
 
 /***/ }),
-/* 229 */
+/* 253 */
 /*!***************************************************!*\
   !*** ./node_modules/@babel/core/lib/transform.js ***!
   \***************************************************/
@@ -59284,7 +67251,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.transformAsync = exports.transformSync = exports.transform = void 0;
 
 function _gensync() {
-  const data = __webpack_require__(/*! gensync */ 183);
+  const data = __webpack_require__(/*! gensync */ 207);
 
   _gensync = function () {
     return data;
@@ -59293,9 +67260,9 @@ function _gensync() {
   return data;
 }
 
-var _config = __webpack_require__(/*! ./config */ 182);
+var _config = __webpack_require__(/*! ./config */ 206);
 
-var _transformation = __webpack_require__(/*! ./transformation */ 230);
+var _transformation = __webpack_require__(/*! ./transformation */ 254);
 
 const transformRunner = _gensync()(function* transform(code, opts) {
   const config = yield* (0, _config.default)(opts);
@@ -59320,7 +67287,7 @@ const transformAsync = transformRunner.async;
 exports.transformAsync = transformAsync;
 
 /***/ }),
-/* 230 */
+/* 254 */
 /*!**************************************************************!*\
   !*** ./node_modules/@babel/core/lib/transformation/index.js ***!
   \**************************************************************/
@@ -59345,15 +67312,15 @@ function _traverse() {
   return data;
 }
 
-var _pluginPass = __webpack_require__(/*! ./plugin-pass */ 231);
+var _pluginPass = __webpack_require__(/*! ./plugin-pass */ 255);
 
-var _blockHoistPlugin = __webpack_require__(/*! ./block-hoist-plugin */ 232);
+var _blockHoistPlugin = __webpack_require__(/*! ./block-hoist-plugin */ 256);
 
-var _normalizeOpts = __webpack_require__(/*! ./normalize-opts */ 233);
+var _normalizeOpts = __webpack_require__(/*! ./normalize-opts */ 257);
 
-var _normalizeFile = __webpack_require__(/*! ./normalize-file */ 234);
+var _normalizeFile = __webpack_require__(/*! ./normalize-file */ 258);
 
-var _generate = __webpack_require__(/*! ./file/generate */ 242);
+var _generate = __webpack_require__(/*! ./file/generate */ 266);
 
 function* run(config, code, ast) {
   const file = yield* (0, _normalizeFile.default)(config.passes, (0, _normalizeOpts.default)(config), code, ast);
@@ -59454,7 +67421,7 @@ function isThenable(val) {
 }
 
 /***/ }),
-/* 231 */
+/* 255 */
 /*!********************************************************************!*\
   !*** ./node_modules/@babel/core/lib/transformation/plugin-pass.js ***!
   \********************************************************************/
@@ -59518,7 +67485,7 @@ exports.default = PluginPass;
 }
 
 /***/ }),
-/* 232 */
+/* 256 */
 /*!***************************************************************************!*\
   !*** ./node_modules/@babel/core/lib/transformation/block-hoist-plugin.js ***!
   \***************************************************************************/
@@ -59543,7 +67510,7 @@ function _traverse() {
   return data;
 }
 
-var _plugin = __webpack_require__(/*! ../config/plugin */ 187);
+var _plugin = __webpack_require__(/*! ../config/plugin */ 211);
 
 let LOADED_PLUGIN;
 
@@ -59622,7 +67589,7 @@ const blockHoistPlugin = {
 };
 
 /***/ }),
-/* 233 */
+/* 257 */
 /*!***********************************************************************!*\
   !*** ./node_modules/@babel/core/lib/transformation/normalize-opts.js ***!
   \***********************************************************************/
@@ -59638,7 +67605,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.default = normalizeOptions;
 
 function _path() {
-  const data = __webpack_require__(/*! path */ 176);
+  const data = __webpack_require__(/*! path */ 200);
 
   _path = function () {
     return data;
@@ -59694,7 +67661,7 @@ function normalizeOptions(config) {
 }
 
 /***/ }),
-/* 234 */
+/* 258 */
 /*!***********************************************************************!*\
   !*** ./node_modules/@babel/core/lib/transformation/normalize-file.js ***!
   \***********************************************************************/
@@ -59710,7 +67677,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.default = normalizeFile;
 
 function _fs() {
-  const data = __webpack_require__(/*! fs */ 235);
+  const data = __webpack_require__(/*! fs */ 259);
 
   _fs = function () {
     return data;
@@ -59720,7 +67687,7 @@ function _fs() {
 }
 
 function _path() {
-  const data = __webpack_require__(/*! path */ 176);
+  const data = __webpack_require__(/*! path */ 200);
 
   _path = function () {
     return data;
@@ -59750,7 +67717,7 @@ function _t() {
 }
 
 function _convertSourceMap() {
-  const data = __webpack_require__(/*! convert-source-map */ 236);
+  const data = __webpack_require__(/*! convert-source-map */ 260);
 
   _convertSourceMap = function () {
     return data;
@@ -59761,9 +67728,9 @@ function _convertSourceMap() {
 
 var _file = __webpack_require__(/*! ./file/file */ 2);
 
-var _parser = __webpack_require__(/*! ../parser */ 239);
+var _parser = __webpack_require__(/*! ../parser */ 263);
 
-var _cloneDeep = __webpack_require__(/*! ./util/clone-deep */ 241);
+var _cloneDeep = __webpack_require__(/*! ./util/clone-deep */ 265);
 
 const {
   file,
@@ -59871,7 +67838,7 @@ function extractComments(regex, ast) {
 }
 
 /***/ }),
-/* 235 */
+/* 259 */
 /*!******************************************************!*\
   !*** ./node_modules/node-libs-browser/mock/empty.js ***!
   \******************************************************/
@@ -59881,7 +67848,7 @@ function extractComments(regex, ast) {
 
 
 /***/ }),
-/* 236 */
+/* 260 */
 /*!**************************************************!*\
   !*** ./node_modules/convert-source-map/index.js ***!
   \**************************************************/
@@ -59890,9 +67857,9 @@ function extractComments(regex, ast) {
 
 "use strict";
 
-var fs = __webpack_require__(/*! fs */ 237);
-var path = __webpack_require__(/*! path */ 176);
-var SafeBuffer = __webpack_require__(/*! safe-buffer */ 238);
+var fs = __webpack_require__(/*! fs */ 261);
+var path = __webpack_require__(/*! path */ 200);
+var SafeBuffer = __webpack_require__(/*! safe-buffer */ 262);
 
 Object.defineProperty(exports, 'commentRegex', {
   get: function getCommentRegex () {
@@ -60028,7 +67995,7 @@ exports.generateMapFileComment = function (file, options) {
 
 
 /***/ }),
-/* 237 */
+/* 261 */
 /*!********************!*\
   !*** fs (ignored) ***!
   \********************/
@@ -60038,7 +68005,7 @@ exports.generateMapFileComment = function (file, options) {
 /* (ignored) */
 
 /***/ }),
-/* 238 */
+/* 262 */
 /*!*******************************************!*\
   !*** ./node_modules/safe-buffer/index.js ***!
   \*******************************************/
@@ -60046,7 +68013,7 @@ exports.generateMapFileComment = function (file, options) {
 /***/ (function(module, exports, __webpack_require__) {
 
 /* eslint-disable node/no-deprecated-api */
-var buffer = __webpack_require__(/*! buffer */ 117)
+var buffer = __webpack_require__(/*! buffer */ 130)
 var Buffer = buffer.Buffer
 
 // alternative to using Object.keys for old browsers
@@ -60110,7 +68077,7 @@ SafeBuffer.allocUnsafeSlow = function (size) {
 
 
 /***/ }),
-/* 239 */
+/* 263 */
 /*!******************************************************!*\
   !*** ./node_modules/@babel/core/lib/parser/index.js ***!
   \******************************************************/
@@ -60126,7 +68093,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.default = parser;
 
 function _parser() {
-  const data = __webpack_require__(/*! @babel/parser */ 135);
+  const data = __webpack_require__(/*! @babel/parser */ 157);
 
   _parser = function () {
     return data;
@@ -60136,7 +68103,7 @@ function _parser() {
 }
 
 function _codeFrame() {
-  const data = __webpack_require__(/*! @babel/code-frame */ 131);
+  const data = __webpack_require__(/*! @babel/code-frame */ 144);
 
   _codeFrame = function () {
     return data;
@@ -60145,7 +68112,7 @@ function _codeFrame() {
   return data;
 }
 
-var _missingPluginHelper = __webpack_require__(/*! ./util/missing-plugin-helper */ 240);
+var _missingPluginHelper = __webpack_require__(/*! ./util/missing-plugin-helper */ 264);
 
 function* parser(pluginPasses, {
   parserOpts,
@@ -60215,7 +68182,7 @@ function* parser(pluginPasses, {
 }
 
 /***/ }),
-/* 240 */
+/* 264 */
 /*!***************************************************************************!*\
   !*** ./node_modules/@babel/core/lib/parser/util/missing-plugin-helper.js ***!
   \***************************************************************************/
@@ -60538,7 +68505,7 @@ If you want to leave it as-is, add ${syntaxPluginInfo} to the 'plugins' section 
 }
 
 /***/ }),
-/* 241 */
+/* 265 */
 /*!********************************************************************************!*\
   !*** ./node_modules/@babel/core/lib/transformation/util/clone-deep-browser.js ***!
   \********************************************************************************/
@@ -60573,7 +68540,7 @@ function _default(value) {
 }
 
 /***/ }),
-/* 242 */
+/* 266 */
 /*!**********************************************************************!*\
   !*** ./node_modules/@babel/core/lib/transformation/file/generate.js ***!
   \**********************************************************************/
@@ -60589,7 +68556,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.default = generateCode;
 
 function _convertSourceMap() {
-  const data = __webpack_require__(/*! convert-source-map */ 236);
+  const data = __webpack_require__(/*! convert-source-map */ 260);
 
   _convertSourceMap = function () {
     return data;
@@ -60599,7 +68566,7 @@ function _convertSourceMap() {
 }
 
 function _generator() {
-  const data = __webpack_require__(/*! @babel/generator */ 100);
+  const data = __webpack_require__(/*! @babel/generator */ 103);
 
   _generator = function () {
     return data;
@@ -60608,7 +68575,7 @@ function _generator() {
   return data;
 }
 
-var _mergeMap = __webpack_require__(/*! ./merge-map */ 243);
+var _mergeMap = __webpack_require__(/*! ./merge-map */ 267);
 
 function generateCode(pluginPasses, file) {
   const {
@@ -60670,7 +68637,7 @@ function generateCode(pluginPasses, file) {
 }
 
 /***/ }),
-/* 243 */
+/* 267 */
 /*!***********************************************************************!*\
   !*** ./node_modules/@babel/core/lib/transformation/file/merge-map.js ***!
   \***********************************************************************/
@@ -60686,7 +68653,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.default = mergeSourceMap;
 
 function _sourceMap() {
-  const data = __webpack_require__(/*! source-map */ 102);
+  const data = __webpack_require__(/*! source-map */ 105);
 
   _sourceMap = function () {
     return data;
@@ -60925,7 +68892,7 @@ function filterSortedArray(array, callback) {
 }
 
 /***/ }),
-/* 244 */
+/* 268 */
 /*!****************************************************************!*\
   !*** ./node_modules/@babel/core/lib/transform-file-browser.js ***!
   \****************************************************************/
@@ -60961,7 +68928,7 @@ function transformFileAsync() {
 }
 
 /***/ }),
-/* 245 */
+/* 269 */
 /*!*******************************************************!*\
   !*** ./node_modules/@babel/core/lib/transform-ast.js ***!
   \*******************************************************/
@@ -60977,7 +68944,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.transformFromAstAsync = exports.transformFromAstSync = exports.transformFromAst = void 0;
 
 function _gensync() {
-  const data = __webpack_require__(/*! gensync */ 183);
+  const data = __webpack_require__(/*! gensync */ 207);
 
   _gensync = function () {
     return data;
@@ -60986,9 +68953,9 @@ function _gensync() {
   return data;
 }
 
-var _config = __webpack_require__(/*! ./config */ 182);
+var _config = __webpack_require__(/*! ./config */ 206);
 
-var _transformation = __webpack_require__(/*! ./transformation */ 230);
+var _transformation = __webpack_require__(/*! ./transformation */ 254);
 
 const transformFromAstRunner = _gensync()(function* (ast, code, opts) {
   const config = yield* (0, _config.default)(opts);
@@ -61017,7 +68984,7 @@ const transformFromAstAsync = transformFromAstRunner.async;
 exports.transformFromAstAsync = transformFromAstAsync;
 
 /***/ }),
-/* 246 */
+/* 270 */
 /*!***********************************************!*\
   !*** ./node_modules/@babel/core/lib/parse.js ***!
   \***********************************************/
@@ -61033,7 +69000,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.parseAsync = exports.parseSync = exports.parse = void 0;
 
 function _gensync() {
-  const data = __webpack_require__(/*! gensync */ 183);
+  const data = __webpack_require__(/*! gensync */ 207);
 
   _gensync = function () {
     return data;
@@ -61042,11 +69009,11 @@ function _gensync() {
   return data;
 }
 
-var _config = __webpack_require__(/*! ./config */ 182);
+var _config = __webpack_require__(/*! ./config */ 206);
 
-var _parser = __webpack_require__(/*! ./parser */ 239);
+var _parser = __webpack_require__(/*! ./parser */ 263);
 
-var _normalizeOpts = __webpack_require__(/*! ./transformation/normalize-opts */ 233);
+var _normalizeOpts = __webpack_require__(/*! ./transformation/normalize-opts */ 257);
 
 const parseRunner = _gensync()(function* parse(code, opts) {
   const config = yield* (0, _config.default)(opts);
