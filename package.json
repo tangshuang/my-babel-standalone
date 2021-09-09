@@ -2,13 +2,14 @@
   "name": "my-babel-standalone",
   "main": "src/index.js",
   "version": "7.10.5",
+  "scripts": {
+    "build": "node build"
+  },
   "dependencies": {
-    "@babel/core": "latest",
-    "@babel/polyfill": "latest",
-    "@babel/preset-env": "latest",
-    "@babel/plugin-proposal-function-bind": "latest",
-    "babel-loader": "latest",
-    "webpack": "latest",
-    "whatwg-fetch": "latest"
+    "@babel/core": "^7.2.2"
+  },
+  "devDependencies": {
+    "babel-loader": "^8.0.5",
+    "webpack": "^4.29.0"
   }
 }
