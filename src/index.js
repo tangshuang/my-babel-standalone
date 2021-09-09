@@ -20,7 +20,6 @@ function loadBuiltin (builtinTable, name) {
 }
 
 function processOptions (options) {
-
   const presets = (options.presets || []).map(presetName => {
     const preset = loadBuiltin(availablePresets, presetName)
     if (preset) {
