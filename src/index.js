@@ -1,4 +1,5 @@
 import { version, buildExternalHelpers, transform as babelTransform, transformFromAst as babelTransformFromAst, parse, traverse, types } from '@babel/core'
+import generate from '@babel/generator'
 
 const { isArray = arg => Object.prototype.toString.call(arg) === '[object Array]' } = Array
 
@@ -86,6 +87,7 @@ export {
   parse,
   traverse,
   types,
+  generate,
   availablePlugins,
   availablePresets,
   buildExternalHelpers,

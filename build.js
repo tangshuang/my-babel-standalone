@@ -35,20 +35,44 @@ const webpackConfig = {
         }
       })
     ],
+    concatenateModules: true,
     usedExports: true,
     sideEffects: true,
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
     library: 'Babel',
-    libraryTarget: 'umd'
+    libraryTarget: 'commonjs2',
+    pathinfo: true,
   },
   plugins: [
     new webpack.NormalModuleReplacementPlugin(
       /^\.{2}\/package\.json/,
       `${__dirname}/package.json`
     )
-  ]
+  ],
+  externals: [
+    {
+      '@babel/helpers': true,
+      process: true,
+      debug: true,
+      ms: true,
+      globals: true,
+      'source-map': true,
+      buffer: true,
+      'base64-js': true,
+      'color-convert': true,
+      chalk: true,
+      '@babel/helper-module-imports': true,
+      '@babel/helper-module-transforms': true,
+      '@babel/helper-replace-supers': true,
+      '@babel/helper-member-expression-to-functions': true,
+      '@babel/helper-simple-access': true,
+      'path-browserify': true,
+      '@babel/core/lib/parser/util/missing-plugin-helper.js': true,
+    },
+    /^\@babel\/helper\-/,
+  ],
 }
 
 const pack = (config = webpackConfig) => new Promise((resolve, reject) => {

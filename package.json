@@ -1,6 +1,6 @@
 {
   "name": "my-babel-standalone",
-  "main": "src/index.js",
+  "main": "dist/babel.js",
   "version": "7.10.5",
   "scripts": {
     "build": "node build"
@@ -9,7 +9,7 @@
     "@babel/core": "^7.2.2"
   },
   "devDependencies": {
-    "babel-loader": "^8.0.5",
-    "webpack": "^4.29.0"
+    "rollup": "^2.56.3",
+    "webpack": "^4.46.0"
   }
 }
