@@ -60,7 +60,6 @@ const webpackConfig = {
       globals: true,
       'source-map': true,
       buffer: true,
-      'base64-js': true,
       'color-convert': true,
       chalk: true,
       '@babel/helper-module-imports': true,
