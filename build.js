@@ -2,25 +2,10 @@ const TerserPlugin = require('terser-webpack-plugin')
 const webpack = require('webpack')
 const fs = require('fs')
 const path = require('path')
+const { version } = require('@babel/core')
 
 const webpackConfig = {
   mode: 'production',
-  module: {
-    rules: [
-      // {
-      //   test: /\.js$/,
-      //   use: {
-      //     loader: 'babel-loader',
-      //     options: {
-      //       babelrc: false,
-      //       presets: [
-      //         '@babel/preset-env'
-      //       ]
-      //     }
-      //   }
-      // }
-    ]
-  },
   node: {
     fs: 'empty'
   },
@@ -42,40 +27,18 @@ const webpackConfig = {
   output: {
     path: path.resolve(__dirname, 'dist'),
     library: 'Babel',
-    libraryTarget: 'commonjs2',
+    libraryTarget: 'umd',
     pathinfo: true,
+    globalObject: `typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : this`,
   },
   plugins: [
     new webpack.NormalModuleReplacementPlugin(
       /^\.{2}\/package\.json/,
       `${__dirname}/package.json`
-    )
-  ],
-  externals: [
-    // {
-    //   '@babel/helpers': 'var __BABEL_HELPERS__',
-    //   process: 'var __BABEL_PROCESS__',
-    //   debug: 'var __BABEL_DEBUG__',
-    //   ms: 'var __BABEL_MS__',
-    //   globals: 'var __BABEL_GLOBALS__',
-    //   'source-map': 'var __BABEL_SOURCE_MAP__',
-    //   buffer: 'var __BABEL_BUFFER__',
-    //   'color-convert': 'var __BABEL_COLOR_CONVERT__',
-    //   chalk: 'var __BABEL_CHALK__',
-    //   '@babel/helper-module-imports': 'var __BABEL_HELPERS__',
-    //   '@babel/helper-module-transforms': 'var __BABEL_HELPERS__',
-    //   '@babel/helper-replace-supers': 'var __BABEL_HELPERS__',
-    //   '@babel/helper-member-expression-to-functions': 'var __BABEL_HELPERS__',
-    //   '@babel/helper-simple-access': 'var __BABEL_HELPERS__',
-    //   'path-browserify': 'var __BABEL_PATH_BROWSERIFY__',
-    //   '@babel/core/lib/parser/util/missing-plugin-helper.js': 'var __BABEL_HELPERS__',
-    // },
-    // function(ctx, request, callback) {
-    //   if (/^\@babel\/helper\-/.test(request)) {
-    //     return callback(null, 'var __BABEL_HELPERS__')
-    //   }
-    //   callback()
-    // },
+    ),
+    new webpack.DefinePlugin({
+      VERSION: JSON.stringify(version),
+    }),
   ],
 }
 
@@ -125,4 +88,6 @@ const cleanTaggedTemplateExpression = (file) => {
   await build('index.js', 'babel.js')
   await build('index.js', 'babel.min.js')
   cleanTaggedTemplateExpression('babel.min.js')
+  await build('parser.js', 'parser.js')
+  await build('parser.js', 'parser.min.js')
 })()

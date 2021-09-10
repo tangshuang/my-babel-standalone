@@ -1,7 +1,7 @@
 {
-  "name": "my-babel-standalone",
-  "main": "dist/babel.js",
-  "version": "7.10.5",
+  "name": "tiny-babel-standalone",
+  "main": "dist/babel.min.js",
+  "version": "1.0.0",
   "scripts": {
     "build": "node build"
   },
