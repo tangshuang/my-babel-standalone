@@ -1,14 +1,10 @@
 # tiny-babel-standalone
 
-> Fork: this project is fork from my-babel-standalone, and want to build a tiny babel-standalone to be used in browser. It exports UMD, you can use modular import or use directly in browser. It did not contain plugins and presets, if you want to include @babel/preset-env or any other plugins, you should clone this project and invoke `registerPlugins` and `registerPresets` to add them.
-
-This standalone build uses [@babel/preset-env](https://github.com/babel/babel/tree/master/packages/babel-preset-env), [@babel/polyfill](https://github.com/babel/babel/tree/master/packages/babel-polyfill), and [whatwg-fetch](https://github.com/github/fetch) to create an experience that mirrors modern browsers. It does not include presets for flow, react, and typescript.
+Fork: this project is fork from my-babel-standalone, and want to build a tiny babel-standalone to be used in browser. It exports UMD, you can use modular import or use directly in browser. It did not contain plugins and presets, if you want to include @babel/preset-env or any other plugins, you should clone this project and invoke `registerPlugins` and `registerPresets` to add them.
 
 * [@babel/standalone](https://github.com/babel/babel/tree/master/packages/babel-standalone) = 5-6 mb minified
 * [my-babel-standalone](https://github.com/joncasey/my-babel-standalone) = 1.5 mb minified
 * [tiny-babel-standalone](https://github.com/tangshuang/my-babel-standalone) = 1mb (without plugins and presets), 610kb (only parser+generate)
-
-Currently, it's being used in the latest builds of [modern-hta](https://github.com/joncasey/modern-hta).
 
 ## Usage
 
